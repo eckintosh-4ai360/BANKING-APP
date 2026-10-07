@@ -1,0 +1,24 @@
+# Production. ProductionSafetyGuard refuses to start with development settings.
+server:
+  forward-headers-strategy: native
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+banking:
+  security:
+    jwt:
+      private-key: ${JWT_PRIVATE_KEY_LOCATION}
+      public-key: ${JWT_PUBLIC_KEY_LOCATION}
+      key-id: ${JWT_KEY_ID:}
+      allow-ephemeral-keys: false
+    rate-limit:
+      store: redis
+
+logging:
+  structured:
+    format:
+      console: ecs
