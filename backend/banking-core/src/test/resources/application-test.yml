@@ -1,0 +1,38 @@
+banking:
+  crypto:
+    active-key-version: 1
+    data-keys:
+      1: BVOxNmlXHutcXPq9VPpsu97iDGWPvjp6GCFAdnrmrwM=
+    blind-index-key: ACtTDQ1zY8e+jYoxRHFUOd4MVP7IIIBM+9shtcgHaDc=
+  kyc:
+    identity-verification-provider: stub
+  storage:
+    base-path: ${java.io.tmpdir}/banking-test-documents
+  security:
+    jwt:
+      allow-ephemeral-keys: true
+    mfa:
+      platform-required: false
+    # Cheap hashing keeps the suite fast; deployed environments enforce the OWASP minimum.
+    password-hashing:
+      memory-kib: 1024
+      iterations: 1
+      parallelism: 1
+    rate-limit:
+      store: in-memory
+      login-per-ip:
+        limit: 100000
+        window: PT1M
+      login-per-account:
+        limit: 100000
+        window: PT1M
+
+management:
+  health:
+    redis:
+      enabled: false
+
+logging:
+  level:
+    com.company.banking: INFO
+    org.hibernate.SQL: WARN
