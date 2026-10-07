@@ -1,0 +1,6 @@
+@import 'tailwindcss';
+@import '@banking/ui/styles.css';
+
+/* Workspace packages live outside this app, so Tailwind must be told to scan them. */
+@source '../../../packages/ui/src';
+@source '../../../packages/console/src';
