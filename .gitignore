@@ -1,0 +1,46 @@
+# Secrets
+.env
+*.pem
+*.key
+*.p12
+*.jks
+
+# Java / Maven
+target/
+*.class
+*.log
+hs_err_pid*
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+.pnpm-store/
+next-env.d.ts
+test-results/
+playwright-report/
+blob-report/
+
+# Flutter / Dart
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.g.dart.bak
+
+# IDEs and OS
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.factorypath
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# Local document storage (encrypted KYC uploads)
+data/
