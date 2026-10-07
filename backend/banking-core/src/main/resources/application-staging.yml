@@ -1,0 +1,15 @@
+# Staging: production-like, synthetic data only, provider sandboxes.
+server:
+  forward-headers-strategy: native
+
+banking:
+  security:
+    jwt:
+      private-key: ${JWT_PRIVATE_KEY_LOCATION}
+      public-key: ${JWT_PUBLIC_KEY_LOCATION}
+      key-id: ${JWT_KEY_ID:}
+
+logging:
+  structured:
+    format:
+      console: ecs
