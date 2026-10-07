@@ -1,0 +1,111 @@
+/*
+ * Design tokens shared by the institution CMS and the platform console. Apps import this after "tailwindcss" and add
+ * an @source for the package so Tailwind scans the component classes.
+ */
+
+:root {
+  --background: oklch(0.985 0.002 247);
+  --foreground: oklch(0.21 0.02 257);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.02 257);
+  --muted: oklch(0.96 0.005 247);
+  --muted-foreground: oklch(0.5 0.02 257);
+  --border: oklch(0.91 0.008 247);
+  --input: oklch(0.87 0.01 247);
+  --ring: oklch(0.55 0.15 255);
+  --primary: oklch(0.45 0.16 258);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.95 0.01 250);
+  --secondary-foreground: oklch(0.25 0.03 257);
+  --destructive: oklch(0.55 0.21 27);
+  --destructive-foreground: oklch(0.99 0 0);
+  --success: oklch(0.55 0.14 155);
+  --success-soft: oklch(0.95 0.05 155);
+  --warning: oklch(0.62 0.15 70);
+  --warning-soft: oklch(0.96 0.06 85);
+  --danger-soft: oklch(0.95 0.04 25);
+  --info-soft: oklch(0.95 0.03 250);
+  --sidebar: oklch(0.22 0.03 257);
+  --sidebar-foreground: oklch(0.92 0.01 250);
+  --sidebar-muted: oklch(0.7 0.02 250);
+  --sidebar-active: oklch(0.3 0.04 257);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --background: oklch(0.17 0.015 257);
+    --foreground: oklch(0.94 0.005 247);
+    --card: oklch(0.21 0.018 257);
+    --card-foreground: oklch(0.94 0.005 247);
+    --muted: oklch(0.25 0.02 257);
+    --muted-foreground: oklch(0.7 0.015 250);
+    --border: oklch(0.3 0.02 257);
+    --input: oklch(0.36 0.02 257);
+    --ring: oklch(0.65 0.14 255);
+    --primary: oklch(0.65 0.15 258);
+    --primary-foreground: oklch(0.15 0.02 257);
+    --secondary: oklch(0.28 0.02 257);
+    --secondary-foreground: oklch(0.92 0.01 250);
+    --destructive: oklch(0.62 0.2 27);
+    --success-soft: oklch(0.3 0.06 155);
+    --warning-soft: oklch(0.32 0.06 80);
+    --danger-soft: oklch(0.3 0.07 25);
+    --info-soft: oklch(0.3 0.05 255);
+    --sidebar: oklch(0.14 0.015 257);
+    --sidebar-active: oklch(0.24 0.03 257);
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger-soft: var(--danger-soft);
+  --color-info-soft: var(--info-soft);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-active: var(--sidebar-active);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', 'Cascadia Code', Menlo, Consolas, monospace;
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
+
+  html {
+    color-scheme: light dark;
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
