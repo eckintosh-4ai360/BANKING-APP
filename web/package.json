@@ -1,0 +1,34 @@
+{
+  "name": "banking-web",
+  "private": true,
+  "type": "module",
+  "description": "Institution CMS and Platform Super Admin (Next.js) with shared UI, API and BFF packages",
+  "workspaces": [
+    "packages/*",
+    "institution-cms",
+    "super-admin"
+  ],
+  "scripts": {
+    "dev:cms": "npm run dev --workspace institution-cms",
+    "dev:admin": "npm run dev --workspace super-admin",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspace institution-cms && npm run build --workspace super-admin"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.7",
+    "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "jsdom": "30.1.2",
+    "typescript": "5.9.3",
+    "vite": "8.3.3",
+    "vitest": "5.0.3"
+  },
+  "engines": {
+    "node": ">=22.22"
+  }
+}
