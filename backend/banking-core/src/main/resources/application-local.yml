@@ -1,0 +1,33 @@
+# Local development (docker compose). Development-only defaults; never deploy this profile.
+spring:
+  datasource:
+    password: ${DB_APP_PASSWORD:banking_app_local}
+  flyway:
+    password: ${DB_MIGRATOR_PASSWORD:banking_migrator_local}
+  data:
+    redis:
+      password: ${REDIS_PASSWORD:banking_redis_local}
+
+banking:
+  # LOCAL DEVELOPMENT KEYS ONLY. Published in the repository, therefore worthless for protecting real data;
+  # deployed environments refuse to start with them.
+  crypto:
+    active-key-version: 1
+    data-keys:
+      1: bN9YtA/MrxiGo85v+XFsh9dIl9SEyvMbkA+lTekXVT8=
+    blind-index-key: Ing4I/mBG69mjiX86y9NBzQU8XvLiRHTu8hWM/nr6U4=
+  kyc:
+    identity-verification-provider: stub
+  security:
+    jwt:
+      # Ephemeral keys: tokens are invalidated on restart.
+      allow-ephemeral-keys: true
+    mfa:
+      # Lets the demo platform owner sign in without an authenticator. Mandatory everywhere else.
+      platform-required: false
+    cors:
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001}
+
+logging:
+  level:
+    com.company.banking: DEBUG
