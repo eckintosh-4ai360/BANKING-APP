@@ -1,0 +1,12 @@
+# Shared development environment. Keys and passwords are injected by the deployment.
+banking:
+  security:
+    jwt:
+      private-key: ${JWT_PRIVATE_KEY_LOCATION}
+      public-key: ${JWT_PUBLIC_KEY_LOCATION}
+      key-id: ${JWT_KEY_ID:}
+
+logging:
+  structured:
+    format:
+      console: ecs
