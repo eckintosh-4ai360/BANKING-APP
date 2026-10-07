@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "types": ["node", "@testing-library/jest-dom/vitest"]
+  },
+  "include": ["next-env.d.ts", "src", "test", "e2e", "*.ts", ".next/types/**/*.ts"],
+  "exclude": ["node_modules", ".next"]
+}
