@@ -1,0 +1,29 @@
+{
+  "name": "@banking/console",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Client building blocks shared by the web consoles: providers, sign-in, MFA, password and audit views",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@banking/api": "0.1.0",
+    "@banking/ui": "0.1.0",
+    "@hookform/resolvers": "5.9.1",
+    "@tanstack/react-query": "5.104.1",
+    "lucide-react": "1.52.0",
+    "react-hook-form": "7.89.0",
+    "zod": "4.6.5"
+  },
+  "peerDependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  }
+}
