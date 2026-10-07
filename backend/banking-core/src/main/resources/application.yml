@@ -1,0 +1,134 @@
+# Base configuration shared by all environments. Secrets come from environment variables only.
+spring:
+  application:
+    name: banking-core
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    # Runtime role: DML only, subject to row-level security.
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:banking}
+    username: ${DB_APP_USER:banking_app}
+    password: ${DB_APP_PASSWORD:}
+    hikari:
+      pool-name: banking-core
+      maximum-pool-size: ${DB_POOL_SIZE:20}
+  flyway:
+    # Schema owner: runs migrations only.
+    user: ${DB_MIGRATOR_USER:banking_migrator}
+    password: ${DB_MIGRATOR_PASSWORD:}
+    schemas: core
+    default-schema: core
+    create-schemas: true
+    validate-migration-naming: true
+    placeholders:
+      app_db_role: ${DB_APP_USER:banking_app}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: core
+        jdbc:
+          time_zone: UTC
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      repositories:
+        enabled: false
+
+  jackson:
+    deserialization:
+      # Jackson 3 rejects absent primitive fields by default; optional flags (e.g. "primary") default to false.
+      fail-on-null-for-primitives: false
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 11MB
+
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+  error:
+    include-stacktrace: never
+    include-message: never
+    include-binding-errors: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: alpha
+    tags-sorter: alpha
+
+logging:
+  pattern:
+    correlation: "[%X{correlationId:-},%X{tenantId:-},%X{actorId:-}] "
+
+banking:
+  security:
+    jwt:
+      issuer: banking-core
+      access-token-ttl: PT10M
+      allow-ephemeral-keys: false
+    session:
+      staff-absolute-ttl: PT12H
+      staff-idle-ttl: PT30M
+      platform-absolute-ttl: PT4H
+      platform-idle-ttl: PT15M
+    lockout:
+      max-failed-attempts: 5
+      duration: PT30M
+    password-hashing:
+      memory-kib: 19456
+      iterations: 2
+      parallelism: 1
+    mfa:
+      issuer: ${MFA_ISSUER:Banking Core}
+      platform-required: true
+      challenge-ttl: PT5M
+    rate-limit:
+      store: redis
+      login-per-ip:
+        limit: 30
+        window: PT1M
+      login-per-account:
+        limit: 10
+        window: PT5M
+    cors:
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+  # Application-level encryption of identity numbers, MFA secrets and documents. Keys come from the secret manager;
+  # the application refuses to start without them.
+  crypto:
+    active-key-version: ${DATA_KEY_ACTIVE_VERSION:1}
+    data-keys:
+      1: ${DATA_KEY_V1:}
+    blind-index-key: ${BLIND_INDEX_KEY:}
+  storage:
+    backend: filesystem
+    base-path: ${DOCUMENT_STORAGE_PATH:./data/documents}
+    max-document-size: 10MB
+  kyc:
+    # none | stub. Real providers are added as adapters once a contract with an approved provider exists.
+    identity-verification-provider: ${IDENTITY_VERIFICATION_PROVIDER:none}
+  platform:
+    bootstrap:
+      username: ${PLATFORM_BOOTSTRAP_USERNAME:}
+      email: ${PLATFORM_BOOTSTRAP_EMAIL:}
+      full-name: ${PLATFORM_BOOTSTRAP_FULL_NAME:Platform Owner}
+      password: ${PLATFORM_BOOTSTRAP_PASSWORD:}
