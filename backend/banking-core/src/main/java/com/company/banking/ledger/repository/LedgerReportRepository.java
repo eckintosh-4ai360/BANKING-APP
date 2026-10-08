@@ -1,0 +1,121 @@
+package com.company.banking.ledger.repository;
+
+import static com.company.banking.ledger.repository.SqlParams.date;
+import static com.company.banking.ledger.repository.SqlParams.uuid;
+import static com.company.banking.ledger.repository.SqlParams.uuidArray;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.Collection;
+import java.util.List;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.stereotype.Repository;
+
+/**
+ * Aggregations straight from the ledger entries (the source of truth), never from projections.
+ */
+@Repository
+@RequiredArgsConstructor
+public class LedgerReportRepository {
+
+    public record GlTotals(UUID chartOfAccountId, BigDecimal debits, BigDecimal credits) {
+    }
+
+    public record BalanceCheck(UUID ledgerAccountId, BigDecimal projected, BigDecimal fromEntries) {
+    }
+
+    private final JdbcClient jdbc;
+
+    /**
+     * Debit and credit totals per GL account up to and including {@code asOf}, in one currency.
+     */
+    public List<GlTotals> glTotals(UUID tenantId, String currency, LocalDate asOf, Collection<UUID> branchIds) {
+        return jdbc.sql("SELECT chart_of_account_id,"
+                        + " coalesce(sum(amount) FILTER (WHERE direction = 'D'), 0) AS debits,"
+                        + " coalesce(sum(amount) FILTER (WHERE direction = 'C'), 0) AS credits"
+                        + " FROM core.ledger_entry"
+                        + " WHERE tenant_id = :tenantId AND currency = :currency AND business_date <= :asOf"
+                        + " AND (CAST(:branchIds AS uuid[]) IS NULL OR branch_id = ANY (CAST(:branchIds AS uuid[])))"
+                        + " GROUP BY chart_of_account_id")
+                .param("tenantId", uuid(tenantId))
+                .param("currency", currency)
+                .param("asOf", date(asOf))
+                .param("branchIds", uuidArray(branchIds))
+                .query((rs, rowNum) -> new GlTotals(rs.getObject("chart_of_account_id", UUID.class),
+                        rs.getBigDecimal("debits"), rs.getBigDecimal("credits")))
+                .list();
+    }
+
+    public long countLedgerAccounts(UUID tenantId) {
+        return jdbc.sql("SELECT count(*) FROM core.account_balance WHERE tenant_id = :tenantId")
+                .param("tenantId", uuid(tenantId))
+                .query(Long.class)
+                .single();
+    }
+
+    public long countJournals(UUID tenantId) {
+        return jdbc.sql("SELECT count(*) FROM core.journal_entry WHERE tenant_id = :tenantId")
+                .param("tenantId", uuid(tenantId))
+                .query(Long.class)
+                .single();
+    }
+
+    /**
+     * Ledger accounts whose projected balance differs from the sum of their entries.
+     */
+    public List<BalanceCheck> balanceBreaks(UUID tenantId) {
+        return jdbc.sql("SELECT ledger_account_id, ledger_balance, from_entries FROM ("
+                        + " SELECT b.ledger_account_id, b.ledger_balance,"
+                        + " coalesce((SELECT sum(CASE WHEN (e.direction = 'D') = (b.normal_side = 'DEBIT')"
+                        + " THEN e.amount ELSE -e.amount END)"
+                        + " FROM core.ledger_entry e"
+                        + " WHERE e.tenant_id = b.tenant_id AND e.ledger_account_id = b.ledger_account_id), 0)"
+                        + " AS from_entries"
+                        + " FROM core.account_balance b WHERE b.tenant_id = :tenantId) checked"
+                        + " WHERE ledger_balance <> from_entries")
+                .param("tenantId", uuid(tenantId))
+                .query((rs, rowNum) -> new BalanceCheck(rs.getObject("ledger_account_id", UUID.class),
+                        rs.getBigDecimal("ledger_balance"), rs.getBigDecimal("from_entries")))
+                .list();
+    }
+
+    /**
+     * Journal numbers that do not balance per currency and branch, or have fewer than two lines.
+     */
+    public List<String> unbalancedJournals(UUID tenantId) {
+        return jdbc.sql("SELECT j.journal_number FROM core.journal_entry j WHERE j.tenant_id = :tenantId AND ("
+                        + " (SELECT count(*) FROM core.ledger_entry e"
+                        + " WHERE e.tenant_id = j.tenant_id AND e.journal_entry_id = j.id) < 2"
+                        + " OR EXISTS (SELECT 1 FROM core.ledger_entry e"
+                        + " WHERE e.tenant_id = j.tenant_id AND e.journal_entry_id = j.id"
+                        + " GROUP BY e.currency, e.branch_id"
+                        + " HAVING sum(CASE e.direction WHEN 'D' THEN e.amount ELSE -e.amount END) <> 0))"
+                        + " ORDER BY j.journal_number LIMIT 100")
+                .param("tenantId", uuid(tenantId))
+                .query(String.class)
+                .list();
+    }
+
+    /**
+     * Net balance of a GL account across all branches and currencies, in debit-minus-credit terms.
+     */
+    public BigDecimal glNetBalance(UUID tenantId, UUID chartOfAccountId) {
+        return jdbc.sql("SELECT coalesce(sum(CASE direction WHEN 'D' THEN amount ELSE -amount END), 0)"
+                        + " FROM core.ledger_entry WHERE tenant_id = :tenantId AND chart_of_account_id = :glId")
+                .param("tenantId", uuid(tenantId))
+                .param("glId", uuid(chartOfAccountId))
+                .query(BigDecimal.class)
+                .single();
+    }
+
+    public boolean hasActiveLedgerAccounts(UUID tenantId, UUID chartOfAccountId) {
+        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM core.ledger_account"
+                        + " WHERE tenant_id = :tenantId AND chart_of_account_id = :glId AND status = 'ACTIVE')")
+                .param("tenantId", uuid(tenantId))
+                .param("glId", uuid(chartOfAccountId))
+                .query(Boolean.class)
+                .single();
+    }
+}
