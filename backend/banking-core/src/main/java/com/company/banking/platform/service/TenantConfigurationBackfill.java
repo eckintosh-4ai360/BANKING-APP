@@ -3,7 +3,10 @@ package com.company.banking.platform.service;
 import com.company.banking.common.security.CurrentActor;
 import com.company.banking.common.tenant.TenantContext;
 import com.company.banking.customer.service.IdentificationTypeService;
+import com.company.banking.iam.service.RoleService;
 import com.company.banking.kyc.service.KycTierService;
+import com.company.banking.ledger.service.AccountingPeriodService;
+import com.company.banking.ledger.service.ChartOfAccountService;
 import com.company.banking.tenant.dto.TenantSummary;
 import com.company.banking.tenant.service.TenantProvisioningService;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +32,9 @@ public class TenantConfigurationBackfill implements ApplicationRunner {
     private final TenantProvisioningService provisioningService;
     private final IdentificationTypeService identificationTypeService;
     private final KycTierService kycTierService;
+    private final ChartOfAccountService chartOfAccountService;
+    private final AccountingPeriodService accountingPeriodService;
+    private final RoleService roleService;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -44,6 +50,9 @@ public class TenantConfigurationBackfill implements ApplicationRunner {
         TenantContext.runAs(tenant.id(), () -> CurrentActor.callAsSystem(tenant.id(), () -> {
             identificationTypeService.provisionDefaults(tenant.countryCode());
             kycTierService.provisionDefaults();
+            chartOfAccountService.provisionDefaults(tenant.institutionType());
+            accountingPeriodService.provisionCurrentPeriod();
+            roleService.provisionMissingDefaultRoles();
             return null;
         }));
     }

@@ -13,6 +13,8 @@ import com.company.banking.common.tenant.TenantContext;
 import com.company.banking.customer.service.IdentificationTypeService;
 import com.company.banking.iam.service.DefaultRoleCatalog;
 import com.company.banking.kyc.service.KycTierService;
+import com.company.banking.ledger.service.AccountingPeriodService;
+import com.company.banking.ledger.service.ChartOfAccountService;
 import com.company.banking.iam.service.RoleService;
 import com.company.banking.iam.service.SessionService;
 import com.company.banking.platform.dto.ChangeTenantStatusRequest;
@@ -60,6 +62,8 @@ public class PlatformTenantService {
     private final SessionService sessionService;
     private final IdentificationTypeService identificationTypeService;
     private final KycTierService kycTierService;
+    private final ChartOfAccountService chartOfAccountService;
+    private final AccountingPeriodService accountingPeriodService;
     private final AuditService auditService;
     private final TransactionTemplate transactionTemplate;
 
@@ -87,6 +91,8 @@ public class PlatformTenantService {
             Map<String, UUID> roles = roleService.provisionDefaultRoles();
             identificationTypeService.provisionDefaults(request.countryCode());
             kycTierService.provisionDefaults();
+            chartOfAccountService.provisionDefaults(request.institutionType());
+            accountingPeriodService.provisionCurrentPeriod();
             OnboardTenantRequest.Administrator admin = request.administrator();
             StaffCreatedResponse administrator = staffService.provisionAdministrator(new NewAdministrator(
                     admin.firstName(), admin.lastName(), admin.email(), admin.phone(), admin.username()),
