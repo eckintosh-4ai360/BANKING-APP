@@ -97,6 +97,12 @@ public class FinancialTransaction implements Persistable<UUID> {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    @Column(name = "approved_by", updatable = false)
+    private UUID approvedBy;
+
+    @Column(name = "approval_request_id", updatable = false)
+    private UUID approvalRequestId;
+
     @Column(name = "reversal_journal_entry_id")
     private UUID reversalJournalEntryId;
 
@@ -118,7 +124,8 @@ public class FinancialTransaction implements Persistable<UUID> {
                                 TransactionChannel channel, String currency, BigDecimal amount, BigDecimal feeAmount,
                                 UUID debitAccountId, UUID creditAccountId, UUID branchId, UUID journalEntryId,
                                 LocalDate businessDate, LocalDate valueDate, String narration,
-                                String externalReference, String idempotencyKey, UUID initiatedBy, Instant createdAt) {
+                                String externalReference, String idempotencyKey, UUID initiatedBy, UUID approvedBy,
+                                UUID approvalRequestId, Instant createdAt) {
         this.id = id;
         this.tenantId = tenantId;
         this.reference = reference;
@@ -138,7 +145,23 @@ public class FinancialTransaction implements Persistable<UUID> {
         this.externalReference = externalReference;
         this.idempotencyKey = idempotencyKey;
         this.initiatedBy = initiatedBy;
+        this.approvedBy = approvedBy;
+        this.approvalRequestId = approvalRequestId;
         this.createdAt = createdAt;
+    }
+
+    /**
+     * Records the reversal (the mirror journal is already posted). A transaction is reversed at most once.
+     */
+    public void markReversed(UUID reversalJournalId, Instant at, UUID by, String reason) {
+        if (status != TransactionStatus.POSTED) {
+            throw new IllegalStateException("Only a posted transaction can be reversed");
+        }
+        this.status = TransactionStatus.REVERSED;
+        this.reversalJournalEntryId = reversalJournalId;
+        this.reversedAt = at;
+        this.reversedBy = by;
+        this.reversalReason = reason;
     }
 
     @Override

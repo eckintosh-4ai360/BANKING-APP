@@ -1,12 +1,14 @@
 package com.company.banking.transaction.controller;
 
+import com.company.banking.approval.dto.ApprovalResponse;
 import com.company.banking.common.api.ApiResponse;
 import com.company.banking.common.api.PageRequests;
 import com.company.banking.common.api.PageResponse;
 import com.company.banking.common.idempotency.IdempotencyService.Result;
 import com.company.banking.transaction.dto.CashDepositRequest;
 import com.company.banking.transaction.dto.CashWithdrawalRequest;
-import com.company.banking.transaction.dto.PostedTransactionResponse;
+import com.company.banking.transaction.dto.MovementResponse;
+import com.company.banking.transaction.dto.ReverseTransactionRequest;
 import com.company.banking.transaction.dto.TransactionResponse;
 import com.company.banking.transaction.dto.TransferRequest;
 import com.company.banking.transaction.service.TransactionQueryService;
@@ -51,7 +53,7 @@ public class TransactionController {
     @PostMapping("/transactions/deposits")
     @PreAuthorize("hasAuthority('transaction.create')")
     @Operation(summary = "Cash deposit into an account at a branch")
-    public ResponseEntity<ApiResponse<PostedTransactionResponse>> deposit(
+    public ResponseEntity<ApiResponse<MovementResponse>> deposit(
             @Parameter(description = "Unique per intended deposit; reuse it only to retry")
             @RequestHeader(name = IDEMPOTENCY_KEY, required = false) String idempotencyKey,
             @Valid @RequestBody CashDepositRequest request) {
@@ -61,7 +63,7 @@ public class TransactionController {
     @PostMapping("/transactions/withdrawals")
     @PreAuthorize("hasAuthority('transaction.create')")
     @Operation(summary = "Cash withdrawal from an account at a branch")
-    public ResponseEntity<ApiResponse<PostedTransactionResponse>> withdraw(
+    public ResponseEntity<ApiResponse<MovementResponse>> withdraw(
             @Parameter(description = "Unique per intended withdrawal; reuse it only to retry")
             @RequestHeader(name = IDEMPOTENCY_KEY, required = false) String idempotencyKey,
             @Valid @RequestBody CashWithdrawalRequest request) {
@@ -71,7 +73,7 @@ public class TransactionController {
     @PostMapping("/transactions/transfers")
     @PreAuthorize("hasAuthority('transaction.create')")
     @Operation(summary = "Transfer between two accounts of the institution")
-    public ResponseEntity<ApiResponse<PostedTransactionResponse>> transfer(
+    public ResponseEntity<ApiResponse<MovementResponse>> transfer(
             @Parameter(description = "Unique per intended transfer; reuse it only to retry")
             @RequestHeader(name = IDEMPOTENCY_KEY, required = false) String idempotencyKey,
             @Valid @RequestBody TransferRequest request) {
@@ -98,10 +100,24 @@ public class TransactionController {
                 PageRequests.of(page, size, Sort.unsorted())));
     }
 
-    private static ResponseEntity<ApiResponse<PostedTransactionResponse>> created(
-            String message, Result<PostedTransactionResponse> result) {
-        return ResponseEntity.status(HttpStatus.CREATED)
+    @PostMapping("/transactions/{id}/reversal")
+    @PreAuthorize("hasAuthority('transaction.reverse')")
+    @Operation(summary = "Ask for a transaction to be reversed; a second person must approve it")
+    public ResponseEntity<ApiResponse<ApprovalResponse>> requestReversal(
+            @PathVariable UUID id, @Valid @RequestBody ReverseTransactionRequest request) {
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(ApiResponse.ok("Reversal waiting for approval", transactionService.requestReversal(id,
+                        request)));
+    }
+
+    /**
+     * 201 when the money moved; 202 when the movement waits for a checker.
+     */
+    private static ResponseEntity<ApiResponse<MovementResponse>> created(
+            String message, Result<MovementResponse> result) {
+        MovementResponse response = result.response();
+        return ResponseEntity.status(response.isPosted() ? HttpStatus.CREATED : HttpStatus.ACCEPTED)
                 .header(REPLAYED, Boolean.toString(result.replayed()))
-                .body(ApiResponse.ok(message, result.response()));
+                .body(ApiResponse.ok(response.isPosted() ? message : "Waiting for approval", response));
     }
 }

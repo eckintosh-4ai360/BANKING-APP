@@ -27,6 +27,8 @@ class TransactionMapper {
                 accountNumbers.get(transaction.getCreditAccountId()), transaction.getBranchId(),
                 transaction.getJournalEntryId(), transaction.getBusinessDate(), transaction.getValueDate(),
                 transaction.getNarration(), transaction.getExternalReference(), transaction.getInitiatedBy(),
-                transaction.getCreatedAt(), transaction.getReversedAt(), transaction.getReversalReason());
+                transaction.getApprovedBy(), transaction.getApprovalRequestId(), transaction.getCreatedAt(),
+                transaction.getReversedAt(), transaction.getReversedBy(), transaction.getReversalJournalEntryId(),
+                transaction.getReversalReason());
     }
 }
