@@ -301,35 +301,33 @@ sequenceDiagram
 
 ## 4. Flutter architecture
 
-Two apps plus shared Dart packages in a **pub workspace** (Dart ≥ 3.6), managed with Melos for scripts.
+Two apps plus shared Dart packages in a **pub workspace** (Dart 3.13, Flutter 3.47): one lockfile, one resolution. Plain `flutter` commands per member replace Melos.
 
 ```text
 mobile/
-├── pubspec.yaml                      workspace root
+├── pubspec.yaml                      workspace root (+ shared analysis_options.yaml with strict analyzer settings)
 ├── packages/
-│   ├── banking_core/                 Dio client, interceptors, auth/session, secure storage, Money (decimal), errors
-│   ├── banking_ui/                   design system: tokens, buttons, inputs, AccountCard, TransactionTile,
-│   │                                 BalanceText (hide/show), PinKeypad, OtpInput, result screens, states
-│   └── banking_api/                  generated/handwritten DTOs (Freezed + json_serializable)
-├── customer_app/
-│   └── lib/src/
-│       ├── app/                      router (GoRouter + auth redirect), theme from tenant branding, flavors
-│       └── features/<feature>/{data,domain,presentation}
-└── field_officer_app/
-    └── lib/src/
-        ├── features/…                customers, kyc capture, collections, susu, visits, sync
-        └── offline/                  Drift (SQLite) + SQLCipher, outbound queue, sync engine
+│   ├── banking_api/                  typed API models (pure Dart, strict parsing, secrets redacted from toString)
+│   ├── banking_core/                 AppConfig, Dio clients + interceptors, SessionController, secure storage,
+│   │                                 Money/MoneyFormat, ApiException; testing.dart = FakeBackend for tests
+│   └── banking_ui/                   theme from branding, PrimaryButton, PasswordField, OtpField, PinKeypad,
+│                                     MoneyText/BalanceText, status views, FeatureTile, InactivityGuard, Validators
+├── customer_app/lib/src/{app,features/<feature>}       white-label: branding bootstrap → welcome → sign-in → home
+└── field_officer_app/lib/src/{app,features/<feature>}  staff sign-in (MFA, forced password change) → home
 ```
 
 | Concern | Decision |
 |---|---|
-| State | Riverpod (code-gen providers); `AsyncValue` for loading/error/data. |
-| Navigation | GoRouter with a redirect guard on auth state; deep links validated. |
-| Network | Dio interceptors: correlation id, auth (single-flight refresh), **Idempotency-Key** on money calls, retry **only** for idempotent requests. |
-| Security | `flutter_secure_storage` (Keychain/Keystore) for refresh token and device key handle; biometric unlock of a **device key pair** (`local_auth` + platform keystore) for step-up; screenshot protection on balance/PIN screens; root/jailbreak *signals* reported to the risk engine (not a hard block); inactivity timeout; remote session revocation honoured on next call. |
-| White-label | Build-time **flavors** per institution (app id, icons, name) + runtime branding from `GET /api/v1/public/institutions/{code}/branding`. |
-| Offline (field app) | Encrypted local DB; each collection gets a client UUID (idempotency key) and per-device sequence number; queue states `QUEUED → SENT → ACCEPTED / REJECTED / CONFLICT`. Balances shown offline are labelled *"as of last sync"* and are never authoritative. |
-| Testing | Unit (providers, money formatting), widget tests (design system, PIN pad), integration tests against a mock server (http_mock_adapter) and staging. |
+| State | Riverpod 3 providers. The session is a `ChangeNotifier` (`SessionController`) that drives both GoRouter's `refreshListenable` and a Riverpod provider. Automatic provider retries are off; the user retries explicitly. |
+| Navigation | GoRouter 18 with a pure `redirectFor(state, location)` function. Each session state (restoring, signed out, MFA required, password change required, MFA enrolment required, signed in) is pinned to its screen, so no deep link skips a step. |
+| Network | Dio 5. The public client handles branding and credential exchanges. The authorised client adds the bearer token (refreshing proactively 30 s before expiry) and recovers once from a 401. Every request carries `X-Correlation-Id` and `X-Device-Id`. **Idempotency-Key** is supported on writes (`newIdempotencyKey()` once per submission). There are **no automatic retries** and redirects are not followed. |
+| Session | The access token lives in memory only. The refresh token sits in `flutter_secure_storage` (Android Keystore AES-GCM; iOS Keychain `unlocked_this_device`, so it is not in backups and not on other devices). Single-flight refresh, with each rotation persisted before use. A rejected refresh token wipes the session; a network failure keeps it. Inactivity sign-out after 5 min (customer) or 10 min (field). |
+| Money | `Money` wraps an exact `Decimal` parsed from the API string, has no arithmetic, and can't be built from a float. `MoneyFormat` formats the decimal string itself. A test fails the build if `double`/`num` appears in money code (Phase 1D gate). |
+| Platform | Android: INTERNET only for HTTPS in release, cleartext allowed in the debug manifest only, `allowBackup=false`. iOS: ATS with `NSAllowsLocalNetworking` only. Release builds refuse an `http` `API_BASE_URL`. |
+| White-label | Build-time `--dart-define=INSTITUTION_CODE` per institution (flavours with icons and app ids come with store release). Runtime branding comes from `GET /api/v1/public/institutions/{code}/branding`. Customer sign-in is offered only when the institution has `CUSTOMER_MOBILE_APP` enabled. |
+| Models | Hand-written, strictly parsed models for now (a few endpoints). Freezed and json_serializable code generation come in when the API surface grows (Phase 2+). |
+| Later phases | Offline queue for the field app (Drift + SQLCipher, client UUID + device sequence, `QUEUED → SENT → ACCEPTED / REJECTED / CONFLICT`), biometric step-up (`local_auth` + keystore key pair), screenshot protection, root/jailbreak *signals*, push notifications. |
+| Testing | Unit tests (models, money, config, errors, session flows incl. refresh races) and widget tests (design system, full app flows against `FakeBackend`, a Dio adapter). |
 
 ## 5. Infrastructure architecture
 
