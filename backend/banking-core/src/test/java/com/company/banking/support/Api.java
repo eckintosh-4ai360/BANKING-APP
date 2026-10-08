@@ -12,6 +12,9 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -34,6 +37,17 @@ public final class Api {
 
     public Response post(String path, String token, Object body) {
         return perform(withBody(authorize(MockMvcRequestBuilders.post(path), token), body));
+    }
+
+    /**
+     * A POST carrying an Idempotency-Key header (money movements).
+     */
+    public Response postIdempotent(String path, String token, String idempotencyKey, Object body) {
+        MockHttpServletRequestBuilder builder = authorize(MockMvcRequestBuilders.post(path), token);
+        if (idempotencyKey != null) {
+            builder.header("Idempotency-Key", idempotencyKey);
+        }
+        return perform(withBody(builder, body));
     }
 
     public Response put(String path, String token, Object body) {
@@ -90,13 +104,20 @@ public final class Api {
             MockHttpServletResponse response = mockMvc.perform(builder).andReturn().getResponse();
             String content = response.getContentAsString(StandardCharsets.UTF_8);
             JsonNode body = content.isBlank() ? jsonMapper.nullNode() : jsonMapper.readTree(content);
-            return new Response(response.getStatus(), body);
+            Map<String, String> headers = new HashMap<>();
+            response.getHeaderNames().forEach(name -> headers.put(name.toLowerCase(Locale.ROOT),
+                    response.getHeader(name)));
+            return new Response(response.getStatus(), body, headers);
         } catch (Exception ex) {
             throw new IllegalStateException("Request failed", ex);
         }
     }
 
-    public record Response(int status, JsonNode body) {
+    public record Response(int status, JsonNode body, Map<String, String> headers) {
+
+        public String header(String name) {
+            return headers.get(name.toLowerCase(Locale.ROOT));
+        }
 
         public Response expect(int expectedStatus) {
             assertThat(status).as("HTTP status, body: %s", body).isEqualTo(expectedStatus);
