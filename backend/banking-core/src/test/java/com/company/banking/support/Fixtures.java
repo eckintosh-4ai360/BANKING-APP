@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 /**
@@ -124,6 +125,35 @@ public final class Fixtures {
         request.put("primaryPhone", phone);
         request.put("individual", individual);
         return api.post("/api/v1/customers", token, request).expect(201).data();
+    }
+
+    /**
+     * An ACTIVE individual customer at {@code branchId} with KYC tier 2: captured by {@code officer} and approved by
+     * {@code reviewer} (four eyes), the same way staff onboard a customer.
+     */
+    public UUID verifiedIndividual(StaffHandle officer, StaffHandle reviewer, UUID branchId, String firstName) {
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        String customerId = createIndividual(officer.token(), branchId, firstName, "Mensah",
+                "+23324" + (1_000_000 + random.nextInt(8_999_999))).get("id").asString();
+        // The stub identity provider fails numbers ending in 9.
+        addGhanaCard(officer.token(), customerId,
+                "GHA-" + (100_000_000 + random.nextInt(899_999_999)) + "-" + random.nextInt(9));
+        addAddress(officer.token(), customerId);
+        addNextOfKin(officer.token(), customerId);
+        String caseId = api.post("/api/v1/customers/" + customerId + "/kyc-cases", officer.token(), Map.of(
+                "caseType", "ONBOARDING", "targetTierCode", "TIER_2")).expect(201).data().get("id").asString();
+        List<String> documents = List.of(uploadDocument(officer.token(), customerId, "ID_FRONT", PNG),
+                uploadDocument(officer.token(), customerId, "SELFIE", JPEG));
+        api.post("/api/v1/kyc/cases/" + caseId + "/identity-check", officer.token(), null).expect(200);
+        JsonNode submitted = api.post("/api/v1/kyc/cases/" + caseId + "/submit", officer.token(), null)
+                .expect(200).data();
+        for (String documentId : documents) {
+            api.post("/api/v1/customers/" + customerId + "/documents/" + documentId + "/review", reviewer.token(),
+                    Map.of("decision", "ACCEPTED")).expect(200);
+        }
+        api.post("/api/v1/kyc/cases/" + caseId + "/approve", reviewer.token(), Map.of(
+                "riskLevel", "LOW", "note", "Checked", "version", submitted.get("version").asLong())).expect(200);
+        return UUID.fromString(customerId);
     }
 
     public JsonNode addGhanaCard(String token, String customerId, String number) {
