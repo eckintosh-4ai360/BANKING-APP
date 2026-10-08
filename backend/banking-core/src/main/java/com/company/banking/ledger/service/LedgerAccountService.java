@@ -20,6 +20,7 @@ import com.company.banking.ledger.repository.LedgerAccountRepository;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
@@ -80,6 +81,18 @@ public class LedgerAccountService {
         return balances.find(TenantContext.requireTenantId(), ledgerAccountIds).stream()
                 .map(this::toSnapshot)
                 .collect(Collectors.toMap(BalanceSnapshot::ledgerAccountId, Function.identity()));
+    }
+
+    /**
+     * Locks the balance row until the caller's transaction ends, so a decision based on it (e.g. placing a hold)
+     * cannot race a posting.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public BalanceSnapshot lockBalance(UUID ledgerAccountId) {
+        return balances.lockForUpdate(TenantContext.requireTenantId(), List.of(ledgerAccountId)).stream()
+                .findFirst()
+                .map(this::toSnapshot)
+                .orElseThrow(() -> new ResourceNotFoundException("Ledger account"));
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
