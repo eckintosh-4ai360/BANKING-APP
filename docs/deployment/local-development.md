@@ -8,7 +8,7 @@
 | Docker Desktop | current | PostgreSQL, Redis, containerised API |
 | Maven | not required | use `./mvnw` / `mvnw.cmd` |
 | Node.js + npm | 24 LTS (22.22+ works) / npm 10+ | web apps (Phase 1C) |
-| Flutter | stable | mobile apps (Phase 1D) |
+| Flutter | 3.47 stable (Dart 3.13) | mobile apps (Phase 1D); Android Studio or Xcode only for device builds |
 
 ## Run the stack
 
@@ -63,6 +63,19 @@ npm run build                  # production builds of both apps (output: standal
 npm run e2e --workspace institution-cms   # Playwright smoke tests; needs the backend (local profile) and the CMS running,
                                           # and once: npx playwright install chromium
 ```
+
+## Mobile apps
+
+```bash
+cd mobile
+flutter pub get
+cd field_officer_app && flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080
+cd customer_app && flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080 --dart-define=INSTITUTION_CODE=demo-mfi
+```
+
+The Android emulator reaches the host machine at `10.0.2.2`; iOS simulators use `http://localhost:8080`. Plain HTTP works only in debug builds: release builds require an `https` `API_BASE_URL`, and the Android release manifest does not allow cleartext traffic. Sign in to the field officer app with institution code `demo-mfi` and a demo staff user, for example `fieldofficer`. The customer app offers sign-in only when the institution has the `CUSTOMER_MOBILE_APP` feature enabled, and the customer sign-in service itself arrives in Phase 6.
+
+Verify with `flutter analyze` at `mobile/`, then `flutter test` in each member (see `mobile/README.md`).
 
 ## Database access
 
