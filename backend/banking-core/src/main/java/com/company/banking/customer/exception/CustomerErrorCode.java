@@ -22,7 +22,9 @@ public enum CustomerErrorCode implements ErrorCode {
     KYC_DATA_LOCKED(HttpStatus.UNPROCESSABLE_CONTENT,
             "Verified identity data can only change through a KYC update case."),
     INVALID_IDENTIFICATION_TYPE_FORMAT(HttpStatus.UNPROCESSABLE_CONTENT,
-            "The format pattern is not a valid regular expression.");
+            "The format pattern is not a valid regular expression."),
+    CUSTOMER_HAS_OPEN_HOLDINGS(HttpStatus.UNPROCESSABLE_CONTENT,
+            "The customer still holds open accounts. Close them before closing the customer.");
 
     private final HttpStatus status;
     private final String defaultMessage;

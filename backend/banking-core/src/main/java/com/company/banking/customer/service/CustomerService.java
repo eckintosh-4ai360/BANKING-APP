@@ -36,12 +36,15 @@ import com.company.banking.customer.repository.CustomerSearchRepository;
 import com.company.banking.customer.repository.IndividualProfileRepository;
 import com.company.banking.staff.service.StaffService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -74,6 +77,7 @@ public class CustomerService {
     private final BranchService branchService;
     private final StaffService staffService;
     private final AuditService auditService;
+    private final ObjectProvider<CustomerHoldingsCheck> holdingsChecks;
     private final Clock clock;
 
     /**
@@ -117,6 +121,35 @@ public class CustomerService {
     @Transactional(readOnly = true)
     public CustomerResponse get(UUID customerId) {
         return viewAssembler.toResponse(accessGuard.loadForRead(customerId));
+    }
+
+    /**
+     * Summary of a customer in the caller's branch scope, for other modules (404 outside the scope).
+     */
+    @Transactional(readOnly = true)
+    public CustomerSummary getSummary(UUID customerId) {
+        return mapper.toSummary(accessGuard.loadForRead(customerId));
+    }
+
+    /**
+     * A customer about to become an account holder: branch scope is checked and the row stays locked until the
+     * caller's transaction ends, so the customer cannot be closed or frozen half-way through opening the account.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public CustomerSummary lockForNewHolding(UUID customerId) {
+        return mapper.toSummary(accessGuard.lockInScope(customerId));
+    }
+
+    /**
+     * Summaries of customers the caller already reached through another record (e.g. an account's holders).
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, CustomerSummary> summaries(Collection<UUID> customerIds) {
+        UUID tenantId = TenantContext.requireTenantId();
+        return customerRepository.findAllById(customerIds).stream()
+                .filter(customer -> customer.getTenantId().equals(tenantId))
+                .map(mapper::toSummary)
+                .collect(Collectors.toMap(CustomerSummary::id, Function.identity()));
     }
 
     @Transactional
@@ -225,7 +258,12 @@ public class CustomerService {
         Customer customer = accessGuard.lockInScope(customerId);
         ConcurrentModificationException.assertVersion(request.version(), customer.getVersion());
         CustomerStatus previous = customer.getStatus();
-        customer.changeStatus(CustomerStatus.valueOf(request.status()), request.reason().trim());
+        CustomerStatus target = CustomerStatus.valueOf(request.status());
+        if (target == CustomerStatus.CLOSED
+                && holdingsChecks.orderedStream().anyMatch(check -> check.hasOpenHoldings(customerId))) {
+            throw new BankingException(CustomerErrorCode.CUSTOMER_HAS_OPEN_HOLDINGS);
+        }
+        customer.changeStatus(target, request.reason().trim());
         customerRepository.saveAndFlush(customer);
         auditService.record(AuditEvent.builder("CUSTOMER_STATUS_CHANGED", RESOURCE)
                 .resourceId(customerId)
