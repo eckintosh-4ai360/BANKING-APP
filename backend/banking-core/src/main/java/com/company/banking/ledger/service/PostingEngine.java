@@ -102,6 +102,19 @@ public class PostingEngine {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public PostedJournal post(PostingRequest request) {
+        return post(request, CurrentActor.currentActorId().orElse(null), request.approvedBy());
+    }
+
+    /**
+     * Posts a journal approved through maker-checker: the maker is recorded as having posted it and the caller (the
+     * checker) as having approved it. {@code request.approvedBy()} is ignored.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public PostedJournal postApproved(PostingRequest request, UUID makerId) {
+        return post(request, makerId, requireChecker());
+    }
+
+    private PostedJournal post(PostingRequest request, UUID postedBy, UUID approvedBy) {
         UUID tenantId = TenantContext.requireTenantId();
         requireValidHeader(request);
         LocalDate businessDate = businessDates.today();
@@ -110,14 +123,14 @@ public class PostingEngine {
             throw new BankingException(LedgerErrorCode.INVALID_POSTING, "The value date cannot be in the future.");
         }
         boolean manual = request.source() == JournalSource.MANUAL;
-        if (manual && request.approvedBy() == null) {
+        if (manual && approvedBy == null) {
             throw new BankingException(LedgerErrorCode.APPROVAL_REQUIRED);
         }
         List<Line> lines = resolve(tenantId, request.lines(), manual);
         requireBalancedPerCurrency(lines);
         return write(tenantId, request.source(), request.sourceReference(), request.financialTransactionId(), null,
-                request.originBranchId(), businessDate, valueDate, request.description().trim(), request.approvedBy(),
-                withInterBranchLines(lines));
+                request.originBranchId(), businessDate, valueDate, request.description().trim(), postedBy,
+                approvedBy, withInterBranchLines(lines));
     }
 
     /**
@@ -126,6 +139,19 @@ public class PostingEngine {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public PostedJournal reverse(ReversalRequest request) {
+        return reverse(request, CurrentActor.currentActorId().orElse(null), request.approvedBy());
+    }
+
+    /**
+     * Reverses a journal after maker-checker: the maker is recorded as having posted the reversal and the caller
+     * (the checker) as having approved it.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public PostedJournal reverseApproved(ReversalRequest request, UUID makerId) {
+        return reverse(request, makerId, requireChecker());
+    }
+
+    private PostedJournal reverse(ReversalRequest request, UUID postedBy, UUID approvedBy) {
         UUID tenantId = TenantContext.requireTenantId();
         if (request.reason() == null || request.reason().isBlank() || request.reason().length() > 250) {
             throw new BankingException(LedgerErrorCode.INVALID_POSTING, "Give a reason of up to 250 characters.");
@@ -163,7 +189,7 @@ public class PostingEngine {
         LocalDate businessDate = businessDates.today();
         PostedJournal reversal = write(tenantId, JournalSource.REVERSAL, original.sourceReference(),
                 request.financialTransactionId(), original.id(), original.branchId(), businessDate, businessDate,
-                "Reversal of " + original.journalNumber() + ": " + request.reason().trim(), request.approvedBy(),
+                "Reversal of " + original.journalNumber() + ": " + request.reason().trim(), postedBy, approvedBy,
                 mirror);
         auditService.record(AuditEvent.builder("JOURNAL_REVERSED", RESOURCE)
                 .resourceId(original.id())
@@ -177,8 +203,7 @@ public class PostingEngine {
 
     private PostedJournal write(UUID tenantId, JournalSource source, String sourceReference, UUID transactionId,
                                 UUID reverses, UUID originBranchId, LocalDate businessDate, LocalDate valueDate,
-                                String description, UUID approvedBy, List<Line> lines) {
-        UUID postedBy = CurrentActor.currentActorId().orElse(null);
+                                String description, UUID postedBy, UUID approvedBy, List<Line> lines) {
         if (approvedBy != null && approvedBy.equals(postedBy)) {
             throw new BankingException(CommonErrorCode.FOUR_EYES_VIOLATION);
         }
@@ -355,6 +380,14 @@ public class PostingEngine {
             count++;
         }
         return count;
+    }
+
+    /**
+     * The person approving a maker-checker action: the current actor, who must be a person.
+     */
+    private static UUID requireChecker() {
+        return CurrentActor.currentActorId()
+                .orElseThrow(() -> new BankingException(LedgerErrorCode.APPROVAL_REQUIRED));
     }
 
     private static void requireValidHeader(PostingRequest request) {
