@@ -1,0 +1,45 @@
+name: mobile
+
+on:
+  pull_request:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile.yml"
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Analyze and test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.47.6"
+          cache: true
+      - name: Resolve workspace (lockfile must be up to date)
+        run: flutter pub get --enforce-lockfile
+      - name: Analyze
+        run: flutter analyze
+      - name: Unit and widget tests
+        run: |
+          for member in packages/banking_api packages/banking_core packages/banking_ui field_officer_app customer_app; do
+            echo "::group::$member"
+            (cd "$member" && flutter test) || exit 1
+            echo "::endgroup::"
+          done
