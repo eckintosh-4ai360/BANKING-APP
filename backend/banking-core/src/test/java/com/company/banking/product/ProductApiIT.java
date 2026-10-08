@@ -9,6 +9,8 @@ import com.company.banking.ledger.LedgerIntegrationTest;
 import com.company.banking.ledger.model.SystemAccount;
 import com.company.banking.support.Fixtures.StaffHandle;
 import com.company.banking.support.Fixtures.TenantHandle;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -115,6 +117,60 @@ class ProductApiIT extends LedgerIntegrationTest {
     }
 
     @Test
+    void chargesArePartOfTheVersionedTerms() {
+        Map<String, Object> withCharge = terms("0");
+        withCharge.put("charges", List.of(charge("CASH_WITHDRAWAL", "FLAT", "1.50", null, null, null)));
+        JsonNode created = api.post("/api/v1/products", admin, product("SAVE01", "SAVINGS", withCharge))
+                .expect(201).data();
+        assertThat(created.at("/versions/0/charges/0/event").asString()).isEqualTo("CASH_WITHDRAWAL");
+        assertThat(created.at("/versions/0/charges/0/flatAmount").asString()).isEqualTo("1.50");
+
+        Map<String, Object> duplicate = terms("0");
+        duplicate.put("charges", List.of(charge("CASH_WITHDRAWAL", "FLAT", "1.00", null, null, null),
+                charge("CASH_WITHDRAWAL", "PERCENT", null, "1", null, null)));
+        api.post("/api/v1/products", admin, product("BAD01", "SAVINGS", duplicate)).expectError(422, "INVALID_TERMS");
+        Map<String, Object> mixed = terms("0");
+        mixed.put("charges", List.of(charge("CASH_DEPOSIT", "FLAT", "1.00", "1", null, null)));
+        api.post("/api/v1/products", admin, product("BAD02", "SAVINGS", mixed)).expectError(422, "INVALID_TERMS");
+        Map<String, Object> inverted = terms("0");
+        inverted.put("charges", List.of(charge("TRANSFER_OUT", "PERCENT", null, "1", "5.00", "1.00")));
+        api.post("/api/v1/products", admin, product("BAD03", "SAVINGS", inverted)).expectError(422, "INVALID_TERMS");
+        Map<String, Object> tooPrecise = terms("0");
+        tooPrecise.put("charges", List.of(charge("TRANSFER_OUT", "FLAT", "1.005", null, null, null)));
+        api.post("/api/v1/products", admin, product("BAD04", "SAVINGS", tooPrecise))
+                .expectError(422, "INVALID_AMOUNT");
+
+        String productId = created.get("id").asString();
+        UUID v1 = UUID.fromString(created.at("/versions/0/id").asString());
+        api.post(version(productId, v1.toString()) + "/publish", admin, null).expect(200);
+        JsonNode drafted = api.post("/api/v1/products/" + productId + "/versions", admin, null).expect(201).data();
+        assertThat(drafted.at("/versions/0/charges/0/flatAmount").asString()).as("copied").isEqualTo("1.50");
+
+        Map<String, Object> raised = terms("0");
+        raised.put("charges", List.of(charge("CASH_WITHDRAWAL", "PERCENT", null, "0.5", "1.00", "10.00")));
+        JsonNode updated = api.put(version(productId, drafted.at("/versions/0/id").asString()), admin, raised)
+                .expect(200).data();
+        assertThat(updated.at("/versions/0/charges/0/calculation").asString()).isEqualTo("PERCENT");
+        assertThat(updated.at("/versions/1/charges/0/flatAmount").asString()).as("v1 untouched").isEqualTo("1.50");
+
+        assertThatThrownBy(() -> inTenant(tenant.id(), () -> jdbcClient.sql("""
+                        INSERT INTO core.product_charge (id, tenant_id, product_version_id, charge_event, name,
+                                                         calculation, flat_amount)
+                        VALUES (:id, :tenantId, :versionId, 'CASH_DEPOSIT', 'Sneaky', 'FLAT', 1)""")
+                .param("id", UUID.randomUUID())
+                .param("tenantId", tenant.id())
+                .param("versionId", v1)
+                .update()))
+                .isInstanceOf(DataAccessException.class)
+                .hasMessageContaining("published product version");
+        assertThatThrownBy(() -> inTenant(tenant.id(), () -> jdbcClient.sql(
+                        "DELETE FROM core.product_charge WHERE product_version_id = :versionId")
+                .param("versionId", v1)
+                .update()))
+                .isInstanceOf(DataAccessException.class);
+    }
+
+    @Test
     void onlyProductManagersChangeProducts() {
         StaffHandle officer = fixtures.createStaff(tenant, "officer", tenant.headOfficeId(), false, "LOAN_OFFICER");
         StaffHandle teller = fixtures.createStaff(tenant, "teller", tenant.headOfficeId(), false, "TELLER");
@@ -153,6 +209,19 @@ class ProductApiIT extends LedgerIntegrationTest {
     }
 
     // ---------------------------------------------------------------------------------------------------------
+
+    private static Map<String, Object> charge(String event, String calculation, String flatAmount, String rate,
+                                              String minAmount, String maxAmount) {
+        Map<String, Object> charge = new HashMap<>();
+        charge.put("event", event);
+        charge.put("name", event + " charge");
+        charge.put("calculation", calculation);
+        charge.put("flatAmount", flatAmount);
+        charge.put("rate", rate);
+        charge.put("minAmount", minAmount);
+        charge.put("maxAmount", maxAmount);
+        return charge;
+    }
 
     private static String version(String productId, String versionId) {
         return "/api/v1/products/" + productId + "/versions/" + versionId;
