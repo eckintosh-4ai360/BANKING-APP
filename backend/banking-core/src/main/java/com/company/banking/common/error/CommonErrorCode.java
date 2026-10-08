@@ -22,6 +22,14 @@ public enum CommonErrorCode implements ErrorCode {
     INVALID_STATE_TRANSITION(HttpStatus.UNPROCESSABLE_CONTENT,
             "The resource cannot move to the requested state."),
     PAYLOAD_TOO_LARGE(HttpStatus.CONTENT_TOO_LARGE, "The request is too large."),
+    IDEMPOTENCY_KEY_REQUIRED(HttpStatus.BAD_REQUEST,
+            "This request needs an Idempotency-Key header so it can be retried safely."),
+    INVALID_IDEMPOTENCY_KEY(HttpStatus.BAD_REQUEST,
+            "The Idempotency-Key must be 8 to 100 letters, digits, hyphens or underscores."),
+    IDEMPOTENCY_KEY_REUSED(HttpStatus.UNPROCESSABLE_CONTENT,
+            "This Idempotency-Key was already used for a different request. Use a new key for a new request."),
+    IDEMPOTENT_REQUEST_IN_PROGRESS(HttpStatus.CONFLICT,
+            "The same request is still being processed. Wait a moment, then retry with the same key."),
     RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "Too many requests. Please wait and try again."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred.");
 
