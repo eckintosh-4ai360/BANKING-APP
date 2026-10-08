@@ -1,6 +1,8 @@
 package com.company.banking.product.dto;
 
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -25,5 +27,17 @@ public record ProductTerms(
         BigDecimal maxOverdraftLimit,
         BigDecimal maxWithdrawalAmount,
         BigDecimal dailyWithdrawalLimit,
-        int dormancyDays) {
+        int dormancyDays,
+        List<ChargeTerms> charges) {
+
+    public ProductTerms {
+        charges = List.copyOf(charges);
+    }
+
+    /**
+     * The charge for a kind of money movement ({@code CASH_DEPOSIT}, {@code CASH_WITHDRAWAL}, {@code TRANSFER_OUT}).
+     */
+    public Optional<ChargeTerms> chargeFor(String event) {
+        return charges.stream().filter(charge -> charge.event().equals(event)).findFirst();
+    }
 }

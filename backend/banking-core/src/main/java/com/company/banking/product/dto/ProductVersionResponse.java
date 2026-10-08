@@ -2,6 +2,7 @@ package com.company.banking.product.dto;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 public record ProductVersionResponse(
@@ -26,5 +27,6 @@ public record ProductVersionResponse(
         BigDecimal maxWithdrawalAmount,
         BigDecimal dailyWithdrawalLimit,
         Instant createdAt,
-        Instant publishedAt) {
+        Instant publishedAt,
+        List<ChargeTerms> charges) {
 }

@@ -14,6 +14,8 @@ import com.company.banking.ledger.dto.GlAccountRef;
 import com.company.banking.ledger.model.SystemAccount;
 import com.company.banking.ledger.service.ChartOfAccountService;
 import com.company.banking.ledger.service.CurrencyService;
+import com.company.banking.product.dto.ChargeRequest;
+import com.company.banking.product.dto.ChargeTerms;
 import com.company.banking.product.dto.CreateProductRequest;
 import com.company.banking.product.dto.ProductRef;
 import com.company.banking.product.dto.ProductResponse;
@@ -23,17 +25,24 @@ import com.company.banking.product.dto.ProductVersionResponse;
 import com.company.banking.product.dto.UpdateProductRequest;
 import com.company.banking.product.entity.AccountProduct;
 import com.company.banking.product.entity.AccountProductVersion;
+import com.company.banking.product.entity.ProductCharge;
 import com.company.banking.product.entity.ProductStatus;
 import com.company.banking.product.entity.ProductVersionStatus;
 import com.company.banking.product.exception.ProductErrorCode;
+import com.company.banking.product.model.ChargeCalculation;
+import com.company.banking.product.model.ChargeEvent;
 import com.company.banking.product.model.ProductType;
 import com.company.banking.product.repository.AccountProductRepository;
 import com.company.banking.product.repository.AccountProductVersionRepository;
+import com.company.banking.product.repository.ProductChargeRepository;
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -60,6 +69,7 @@ public class ProductService {
 
     private final AccountProductRepository products;
     private final AccountProductVersionRepository versions;
+    private final ProductChargeRepository charges;
     private final ChartOfAccountService chartOfAccounts;
     private final CurrencyService currencies;
     private final KycTierService kycTiers;
@@ -92,8 +102,10 @@ public class ProductService {
         ProductType type = ProductType.valueOf(request.productType());
         AccountProduct product = products.saveAndFlush(new AccountProduct(UuidV7.next(), tenantId, code,
                 request.name().trim(), type, blankToNull(request.description())));
-        versions.saveAndFlush(new AccountProductVersion(UuidV7.next(), tenantId, product.getId(), 1,
-                resolveTerms(type, request.terms()), clock.instant(), CurrentActor.currentActorId().orElse(null)));
+        AccountProductVersion version = versions.saveAndFlush(new AccountProductVersion(UuidV7.next(), tenantId,
+                product.getId(), 1, resolveTerms(type, request.terms()), clock.instant(),
+                CurrentActor.currentActorId().orElse(null)));
+        replaceCharges(version, request.terms().charges());
         ProductResponse response = toResponse(tenantId, product);
         auditService.record(AuditEvent.builder("PRODUCT_CREATED", RESOURCE)
                 .resourceId(product.getId())
@@ -135,9 +147,15 @@ public class ProductService {
             throw new BankingException(ProductErrorCode.DRAFT_ALREADY_EXISTS);
         }
         AccountProductVersion latest = all.getFirst();
-        versions.saveAndFlush(new AccountProductVersion(UuidV7.next(), tenantId, productId,
-                latest.getVersionNo() + 1, latest.terms(), clock.instant(),
+        AccountProductVersion draft = versions.saveAndFlush(new AccountProductVersion(UuidV7.next(), tenantId,
+                productId, latest.getVersionNo() + 1, latest.terms(), clock.instant(),
                 CurrentActor.currentActorId().orElse(null)));
+        charges.saveAllAndFlush(charges.findAllByTenantIdAndProductVersionIdOrderByChargeEvent(tenantId,
+                        latest.getId()).stream()
+                .map(charge -> new ProductCharge(UuidV7.next(), tenantId, draft.getId(), charge.getChargeEvent(),
+                        charge.getName(), charge.getCalculation(), charge.getFlatAmount(), charge.getRate(),
+                        charge.getMinAmount(), charge.getMaxAmount()))
+                .toList());
         return toResponse(tenantId, product);
     }
 
@@ -151,6 +169,7 @@ public class ProductService {
         }
         draft.apply(resolveTerms(product.getProductType(), request));
         versions.saveAndFlush(draft);
+        replaceCharges(draft, request.charges());
         auditService.record(AuditEvent.builder("PRODUCT_DRAFT_UPDATED", RESOURCE)
                 .resourceId(productId)
                 .resourceReference(product.getCode())
@@ -269,6 +288,60 @@ public class ProductService {
                 requiredTier, request.allowOverdraft(), maxOverdraft, maxWithdrawal, dailyLimit);
     }
 
+    /**
+     * Replaces the charges of a draft version (the database refuses it for any other version).
+     */
+    private void replaceCharges(AccountProductVersion version, List<ChargeRequest> requested) {
+        String currency = version.getCurrency();
+        Set<String> events = new HashSet<>();
+        List<ProductCharge> replacement = new ArrayList<>();
+        for (ChargeRequest charge : requested == null ? List.<ChargeRequest>of() : requested) {
+            if (!events.add(charge.event())) {
+                throw new BankingException(ProductErrorCode.INVALID_TERMS,
+                        "A product can have one charge per kind of money movement.");
+            }
+            ChargeCalculation calculation = ChargeCalculation.valueOf(charge.calculation());
+            boolean consistent = calculation == ChargeCalculation.FLAT
+                    ? charge.flatAmount() != null && charge.rate() == null && charge.minAmount() == null
+                    && charge.maxAmount() == null
+                    : charge.rate() != null && charge.flatAmount() == null;
+            if (!consistent) {
+                throw new BankingException(ProductErrorCode.INVALID_TERMS,
+                        "A flat charge has only an amount; a percentage charge has a rate and optionally a minimum "
+                                + "and maximum.");
+            }
+            if (calculation == ChargeCalculation.FLAT) {
+                currencies.requireValidAmount(charge.flatAmount(), currency);
+            } else if (charge.rate().stripTrailingZeros().scale() > 6) {
+                throw new BankingException(ProductErrorCode.INVALID_TERMS, "Charge rates have at most 6 decimal places.");
+            }
+            BigDecimal min = charge.minAmount() == null ? null : money(charge.minAmount(), currency);
+            BigDecimal max = optionalMoney(charge.maxAmount(), currency);
+            if (min != null && max != null && min.compareTo(max) > 0) {
+                throw new BankingException(ProductErrorCode.INVALID_TERMS,
+                        "A charge minimum cannot be above its maximum.");
+            }
+            replacement.add(new ProductCharge(UuidV7.next(), version.getTenantId(), version.getId(),
+                    ChargeEvent.valueOf(charge.event()), charge.name().trim(), calculation, charge.flatAmount(),
+                    charge.rate(), min, max));
+        }
+        charges.deleteAll(charges.findAllByTenantIdAndProductVersionIdOrderByChargeEvent(version.getTenantId(),
+                version.getId()));
+        charges.flush();
+        charges.saveAllAndFlush(replacement);
+    }
+
+    private List<ChargeTerms> chargesOf(AccountProductVersion version) {
+        String currency = version.getCurrency();
+        return charges.findAllByTenantIdAndProductVersionIdOrderByChargeEvent(version.getTenantId(), version.getId())
+                .stream()
+                .map(charge -> new ChargeTerms(charge.getChargeEvent().name(), charge.getName(),
+                        charge.getCalculation().name(), present(charge.getFlatAmount(), currency),
+                        charge.getRate() == null ? null : charge.getRate().stripTrailingZeros(),
+                        present(charge.getMinAmount(), currency), present(charge.getMaxAmount(), currency)))
+                .toList();
+    }
+
     private GlAccountRef gl(UUID requested, SystemAccount fallback, String expectedClass) {
         GlAccountRef gl = requested != null ? chartOfAccounts.requirePostable(requested)
                 : chartOfAccounts.requireSystem(fallback);
@@ -299,7 +372,7 @@ public class ProductService {
                 terms.interestExpenseGlId(), terms.minOpeningBalance(), terms.minOperatingBalance(), terms.maxBalance(),
                 terms.interestRate(), terms.interestCalcMethod(), terms.interestPostingFrequency(), terms.dayCount(),
                 terms.dormancyDays(), terms.requiredKycTier(), terms.allowOverdraft(), terms.maxOverdraftLimit(),
-                terms.maxWithdrawalAmount(), terms.dailyWithdrawalLimit());
+                terms.maxWithdrawalAmount(), terms.dailyWithdrawalLimit(), null);
     }
 
     private AccountProduct loadProduct(UUID tenantId, UUID productId) {
@@ -336,7 +409,8 @@ public class ProductService {
                 version.getInterestCalcMethod(), version.getInterestPostingFrequency(), version.getDayCount(),
                 version.getDormancyDays(), version.getRequiredKycTier(), version.isAllowOverdraft(),
                 present(version.getMaxOverdraftLimit(), currency), present(version.getMaxWithdrawalAmount(), currency),
-                present(version.getDailyWithdrawalLimit(), currency), version.getCreatedAt(), version.getPublishedAt());
+                present(version.getDailyWithdrawalLimit(), currency), version.getCreatedAt(), version.getPublishedAt(),
+                chargesOf(version));
     }
 
     private ProductTerms toTerms(AccountProduct product, AccountProductVersion version) {
@@ -345,7 +419,7 @@ public class ProductService {
                 version.getFeeIncomeGlId(), version.getInterestExpenseGlId(), version.getMinOpeningBalance(),
                 version.getMinOperatingBalance(), version.getMaxBalance(), version.getRequiredKycTier(),
                 version.isAllowOverdraft(), version.getMaxOverdraftLimit(), version.getMaxWithdrawalAmount(),
-                version.getDailyWithdrawalLimit(), version.getDormancyDays());
+                version.getDailyWithdrawalLimit(), version.getDormancyDays(), chargesOf(version));
     }
 
     private BigDecimal present(BigDecimal amount, String currency) {
