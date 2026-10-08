@@ -17,6 +17,7 @@ import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicUpdate;
 
 /**
  * A customer deposit account. Its money lives in the ledger account it points to; this row carries the contract
@@ -24,6 +25,7 @@ import lombok.NoArgsConstructor;
  */
 @Getter
 @Entity
+@DynamicUpdate
 @Table(name = "account")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Account extends AuditableEntity {

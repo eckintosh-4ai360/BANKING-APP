@@ -7,6 +7,7 @@ import com.company.banking.account.dto.ChangeAccountStatusRequest;
 import com.company.banking.account.dto.CloseAccountRequest;
 import com.company.banking.account.dto.OpenAccountRequest;
 import com.company.banking.account.dto.OpenAccountRequest.HolderRequest;
+import com.company.banking.account.dto.PostingAccount;
 import com.company.banking.account.entity.Account;
 import com.company.banking.account.entity.AccountHolder;
 import com.company.banking.account.exception.AccountErrorCode;
@@ -42,9 +43,11 @@ import com.company.banking.product.dto.ProductRef;
 import com.company.banking.product.dto.ProductTerms;
 import com.company.banking.product.service.ProductService;
 import jakarta.persistence.criteria.Predicate;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -57,6 +60,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -270,6 +274,86 @@ public class AccountService {
                 .metadata("reason", reason)
                 .build());
         return toResponse(account);
+    }
+
+    // ------------------------------------------------------------------------------ for the transaction module
+
+    /**
+     * Locks the accounts of a money movement (ascending id order, so two transfers between the same accounts in
+     * opposite directions cannot deadlock). Accounts outside the caller's branch scope are not found. The locks
+     * serialise every movement, hold and lifecycle change of an account until the caller commits.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Map<UUID, PostingAccount> lockForPosting(Collection<UUID> accountIds) {
+        Map<UUID, PostingAccount> locked = new LinkedHashMap<>();
+        accountIds.stream().distinct().sorted()
+                .forEach(accountId -> locked.put(accountId, toPostingAccount(accessGuard.lockInScope(accountId))));
+        return locked;
+    }
+
+    /**
+     * After money moved: records the activity and activates a PENDING account once its opening deposit is in.
+     *
+     * @param ledgerBalance the account balance after the posting
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordPosting(UUID accountId, BigDecimal ledgerBalance) {
+        UUID tenantId = TenantContext.requireTenantId();
+        Account account = accountRepository.findByTenantIdAndId(tenantId, accountId)
+                .orElseThrow(() -> new ResourceNotFoundException("Account"));
+        Instant now = clock.instant();
+        if (account.getStatus() == AccountStatus.PENDING && ledgerBalance.compareTo(
+                productService.terms(account.getProductVersionId()).minOpeningBalance()) >= 0) {
+            account.changeStatus(AccountStatus.ACTIVE, "Opening deposit received", now);
+            account.recordActivity(now);
+            accountRepository.saveAndFlush(account);
+            auditService.record(AuditEvent.builder("ACCOUNT_ACTIVATED", RESOURCE)
+                    .resourceId(accountId)
+                    .resourceReference(account.getAccountNumber())
+                    .branchId(account.getBranchId())
+                    .before(Map.of("status", AccountStatus.PENDING))
+                    .after(Map.of("status", AccountStatus.ACTIVE))
+                    .build());
+            return;
+        }
+        accountRepository.touchActivity(tenantId, accountId, now);
+    }
+
+    /**
+     * An account the caller may see (404 otherwise), for listing its transactions.
+     */
+    @Transactional(readOnly = true)
+    public PostingAccount requireReadable(UUID accountId) {
+        return toPostingAccount(accessGuard.loadForRead(accountId));
+    }
+
+    /**
+     * Whether the caller may see the account. Does not throw, so callers can check several accounts inside one
+     * transaction without marking it for rollback.
+     */
+    @Transactional(readOnly = true)
+    public boolean isReadable(UUID accountId) {
+        BranchScope scope = CurrentActor.require().branchScope();
+        return accountRepository.findByTenantIdAndId(TenantContext.requireTenantId(), accountId)
+                .filter(account -> scope.permits(account.getBranchId()))
+                .isPresent();
+    }
+
+    @Transactional(readOnly = true)
+    public Map<UUID, String> accountNumbers(Collection<UUID> accountIds) {
+        UUID tenantId = TenantContext.requireTenantId();
+        Map<UUID, String> numbers = new HashMap<>();
+        accountRepository.findAllById(accountIds).stream()
+                .filter(account -> account.getTenantId().equals(tenantId))
+                .forEach(account -> numbers.put(account.getId(), account.getAccountNumber()));
+        return numbers;
+    }
+
+    private static PostingAccount toPostingAccount(Account account) {
+        return new PostingAccount(account.getId(), account.getAccountNumber(), account.getTitle(),
+                account.getCustomerId(), account.getLedgerAccountId(), account.getBranchId(), account.getCurrency(),
+                account.getStatus().name(), account.getProductVersionId(), account.getStatus().allowsCredit(),
+                account.getStatus().allowsDebit());
     }
 
     // ---------------------------------------------------------------------------------------------------------

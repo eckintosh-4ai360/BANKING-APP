@@ -4,6 +4,7 @@ import com.company.banking.account.entity.Account;
 import com.company.banking.account.model.AccountStatus;
 import com.company.banking.account.model.HolderRole;
 import jakarta.persistence.LockModeType;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -11,6 +12,7 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -26,6 +28,14 @@ public interface AccountRepository extends JpaRepository<Account, UUID>, JpaSpec
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select a from Account a where a.tenantId = :tenantId and a.id = :id")
     Optional<Account> lockByTenantIdAndId(@Param("tenantId") UUID tenantId, @Param("id") UUID id);
+
+    /**
+     * Records activity without bumping the optimistic version, so busy accounts do not turn every staff edit into a
+     * conflict. The caller already holds the row lock.
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("update Account a set a.lastActivityAt = :at where a.tenantId = :tenantId and a.id = :id")
+    int touchActivity(@Param("tenantId") UUID tenantId, @Param("id") UUID id, @Param("at") Instant at);
 
     @Query("""
             select a from Account a
