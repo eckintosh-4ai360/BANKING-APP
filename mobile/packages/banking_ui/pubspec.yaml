@@ -1,0 +1,21 @@
+name: banking_ui
+description: Design system of the mobile apps - tokens, theme from institution branding and banking widgets.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+  flutter: ">=3.38.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  banking_api:
+    path: ../banking_api
+  banking_core:
+    path: ../banking_core
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
