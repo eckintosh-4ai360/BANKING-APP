@@ -21,6 +21,7 @@ public final class DefaultRoleCatalog {
     public static final String FIELD_OFFICER = "FIELD_OFFICER";
     public static final String COMPLIANCE_OFFICER = "COMPLIANCE_OFFICER";
     public static final String AUDITOR = "AUDITOR";
+    public static final String ACCOUNTANT = "ACCOUNTANT";
 
     private DefaultRoleCatalog() {
     }
@@ -71,6 +72,12 @@ public final class DefaultRoleCatalog {
                 Permissions.TRANSACTION_VIEW, Permissions.COMPLIANCE_VIEW, Permissions.COMPLIANCE_MANAGE,
                 Permissions.FRAUD_VIEW, Permissions.FRAUD_MANAGE, Permissions.REPORT_VIEW,
                 Permissions.REPORT_EXPORT, Permissions.AUDIT_VIEW);
+        add(templates, ACCOUNTANT, "Accountant",
+                "Keeps the books: journals, trial balance, period close and approval of manual journals",
+                Permissions.BRANCH_VIEW, Permissions.PRODUCT_VIEW, Permissions.ACCOUNT_VIEW,
+                Permissions.TRANSACTION_VIEW, Permissions.LEDGER_VIEW, Permissions.LEDGER_POST,
+                Permissions.APPROVAL_VIEW, Permissions.APPROVAL_ACT, Permissions.REPORT_VIEW,
+                Permissions.REPORT_EXPORT);
         add(templates, AUDITOR, "Auditor",
                 "Read-only access to records, ledger, approvals and audit trail",
                 Permissions.INSTITUTION_VIEW, Permissions.SETTINGS_VIEW, Permissions.BRANCH_VIEW,

@@ -175,6 +175,21 @@ public class RoleService {
     }
 
     /**
+     * Adds role templates introduced after an institution was onboarded (e.g. Accountant). Existing roles, including
+     * the institution's changes to them, are left alone.
+     */
+    @Transactional
+    public void provisionMissingDefaultRoles() {
+        UUID tenantId = TenantContext.requireTenantId();
+        DefaultRoleCatalog.templates().values().stream()
+                .filter(template -> !roleRepository.existsByTenantIdAndCode(tenantId, template.code()))
+                .forEach(template -> roleRepository.save(new Role(UuidV7.next(), tenantId, template.code(),
+                        template.name(), template.description(), true,
+                        validatedTenantPermissions(template.permissions()))));
+        roleRepository.flush();
+    }
+
+    /**
      * Creates the default role templates for a new institution.
      *
      * @return role ids by role code
