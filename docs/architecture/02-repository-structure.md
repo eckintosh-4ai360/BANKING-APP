@@ -62,8 +62,8 @@ BANKING/                                    (digital-banking-platform)
 │   └── super-admin/
 │
 ├── mobile/                                                                     (Phase 1D)
-│   ├── pubspec.yaml  melos.yaml
-│   ├── packages/banking_core  packages/banking_ui  packages/banking_api
+│   ├── pubspec.yaml  analysis_options.yaml                         pub workspace
+│   ├── packages/banking_api  packages/banking_core  packages/banking_ui
 │   ├── customer_app/
 │   └── field_officer_app/
 │
