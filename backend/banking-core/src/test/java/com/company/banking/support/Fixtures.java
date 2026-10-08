@@ -156,6 +156,26 @@ public final class Fixtures {
         return UUID.fromString(customerId);
     }
 
+    /**
+     * Creates a deposit product and publishes its first version; returns the product id.
+     */
+    public String publishedProduct(TenantHandle tenant, String code, String type, Map<String, Object> terms) {
+        JsonNode created = api.post("/api/v1/products", tenant.adminToken(),
+                ProductRequests.product(code, type, terms)).expect(201).data();
+        String productId = created.get("id").asString();
+        api.post("/api/v1/products/" + productId + "/versions/" + created.at("/versions/0/id").asString()
+                + "/publish", tenant.adminToken(), null).expect(200);
+        return productId;
+    }
+
+    /**
+     * A single-holder account at the customer's home branch.
+     */
+    public JsonNode openAccount(String token, UUID customerId, String productId) {
+        return api.post("/api/v1/accounts", token, Map.of("customerId", customerId.toString(),
+                "productId", productId, "ownershipType", "SINGLE")).expect(201).data();
+    }
+
     public JsonNode addGhanaCard(String token, String customerId, String number) {
         return api.post("/api/v1/customers/" + customerId + "/identifications", token, Map.of(
                 "idTypeCode", "GHANA_CARD", "idNumber", number, "issuingCountry", "GH",
