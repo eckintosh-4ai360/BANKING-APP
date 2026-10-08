@@ -6,7 +6,7 @@ A multi-tenant core banking and microfinance platform for African financial inst
 |---|---|---|
 | `backend/banking-core` | Java 21, Spring Boot 4.1 modular monolith, PostgreSQL 18, Redis, Flyway | **Phases 1A + 1B complete** |
 | `web/institution-cms`, `web/super-admin` | Next.js 16, React 19, TypeScript, Tailwind 4, TanStack Query/Table, RHF + Zod | **Phase 1C complete** (Playwright smoke suite needs a running stack) |
-| `mobile/customer_app`, `mobile/field_officer_app` | Flutter, Riverpod, GoRouter, Dio | Phase 1D |
+| `mobile/customer_app`, `mobile/field_officer_app` | Flutter 3.47, Riverpod 3, GoRouter 18, Dio 5, secure storage | **Phase 1D complete** (tested with `flutter test`; device builds not yet produced) |
 
 Start with the architecture docs in [`docs/`](docs/README.md). The [specification review](docs/architecture/00-specification-review.md) explains the key decisions, and the [roadmap](docs/architecture/04-roadmap.md) gives the build order and exit gates.
 
@@ -36,9 +36,15 @@ Start with the architecture docs in [`docs/`](docs/README.md). The [specificatio
 - **Platform console:** institution onboarding, licensing, suspension, platform audit. No route to tenant customer data.
 - **Backend-for-frontend:** tokens never reach browser JavaScript (sealed HttpOnly SameSite=Strict cookies), CSRF header + Origin checks, single-flight token refresh, allow-listed proxy, nonce-based Content-Security-Policy.
 
+### Phase 1D: mobile apps
+
+- **Field officer app:** staff sign-in with two-step verification and forced change of temporary passwords, officer home, inactivity sign-out.
+- **Customer app:** white-label build per institution that loads its branding first; sign-in only when the institution enabled mobile banking.
+- **Shared core:** access token in memory only, refresh token in the platform keystore, single-flight token refresh, exact-decimal `Money` with no floating point (enforced by a test).
+
 ### Tests
 
-**143 backend tests** (unit, ArchUnit, integration against real PostgreSQL) and **119 web tests** (Vitest + Testing Library). They cover cross-tenant isolation, RLS, token reuse, lockout, the permission matrix, PII in logs, the four-eyes rule, session sealing, CSRF, refresh races, proxy allow-lists and form validation.
+**143 backend tests** (unit, ArchUnit, integration against real PostgreSQL), **119 web tests** (Vitest + Testing Library) and **69 mobile tests** (Flutter unit and widget tests). They cover cross-tenant isolation, RLS, token reuse, lockout, the permission matrix, PII in logs, the four-eyes rule, session sealing, CSRF, refresh races, proxy allow-lists and form validation.
 
 ## Quick start
 
@@ -88,6 +94,9 @@ cd backend/banking-core
 
 cd web
 npm run typecheck && npm test && npm run build
+
+cd mobile
+flutter analyze    # then flutter test in each package and app, see mobile/README.md
 ```
 
 ## Repository layout
@@ -95,7 +104,7 @@ npm run typecheck && npm test && npm run build
 ```text
 backend/banking-core/     Spring Boot modular monolith (common, audit, tenant, branch, iam, staff, platform, customer, kyc, document)
 web/                      Next.js apps + shared packages (api, bff, ui, console)
-mobile/                   Flutter apps (Phase 1D)
+mobile/                   Flutter pub workspace: customer and field officer apps + shared packages
 infrastructure/           PostgreSQL init scripts; Kubernetes/observability later
 docs/                     Architecture, domain model, roadmap, security, deployment
 docker-compose.yml        Local stack
