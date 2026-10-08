@@ -1,0 +1,33 @@
+# Shared analysis rules for every workspace member (each member's analysis_options.yaml includes this file).
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+  errors:
+    # Unawaited futures in auth and money flows hide failures; treat them as errors.
+    unawaited_futures: error
+    missing_return: error
+  exclude:
+    - "**/build/**"
+    - "**/*.g.dart"
+    - "**/android/**"
+    - "**/ios/**"
+
+linter:
+  rules:
+    - always_declare_return_types
+    - avoid_dynamic_calls
+    - avoid_print
+    - avoid_slow_async_io
+    - cancel_subscriptions
+    - close_sinks
+    - prefer_final_locals
+    - prefer_single_quotes
+    - require_trailing_commas
+    - sort_constructors_first
+    - unawaited_futures
+    - unnecessary_lambdas
+    - use_super_parameters

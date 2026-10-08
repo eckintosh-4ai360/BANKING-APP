@@ -1,0 +1,16 @@
+name: banking_mobile_workspace
+description: Pub workspace for the customer app, the field officer app and their shared packages.
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+
+# One lockfile and one resolution for every member, so all apps build against the same dependency versions.
+workspace:
+  - packages/banking_api
+  - packages/banking_core
+  - packages/banking_ui
+  - customer_app
+  - field_officer_app
+dev_dependencies:
+  flutter_lints: ^6.0.0
