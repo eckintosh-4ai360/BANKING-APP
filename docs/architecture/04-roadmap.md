@@ -24,7 +24,7 @@ flowchart LR
 
 ## Phase 1: Foundation
 
-Status: **1A done** (2026-10-06), **1B done** (2026-10-07), **1C done** (2026-10-07; Playwright smoke suite written, not yet run against a live stack), 1D next.
+Status: **1A done** (2026-10-06), **1B done** (2026-10-07), **1C done** (2026-10-07; Playwright smoke suite written, not yet run against a live stack), **1D done** (2026-10-08; Android/iOS builds not yet produced, see blueprint §11). Phase 1 complete; Phase 2 next.
 
 | Step | Deliverables | Exit gate |
 |---|---|---|
