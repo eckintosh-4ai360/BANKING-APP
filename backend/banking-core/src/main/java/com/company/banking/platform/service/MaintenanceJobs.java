@@ -1,5 +1,6 @@
 package com.company.banking.platform.service;
 
+import com.company.banking.account.service.AccountHoldService;
 import com.company.banking.common.idempotency.IdempotencyService;
 import com.company.banking.common.outbox.OutboxService;
 import com.company.banking.common.persistence.ClusterLock;
@@ -30,10 +31,12 @@ public class MaintenanceJobs {
     private static final int PAGE_SIZE = 200;
     private static final int OUTBOX_BATCH = 100;
     private static final int PURGE_BATCH = 1000;
+    private static final int HOLD_BATCH = 500;
 
     private final TenantProvisioningService provisioningService;
     private final OutboxService outboxService;
     private final IdempotencyService idempotencyService;
+    private final AccountHoldService holdService;
     private final ClusterLock clusterLock;
 
     @Scheduled(fixedDelayString = "${banking.outbox.relay-interval:PT5S}")
@@ -46,6 +49,12 @@ public class MaintenanceJobs {
     public void purgeExpiredIdempotencyRecords() {
         clusterLock.runExclusively("job:idempotency-purge", () -> forEachTenant("idempotency purge",
                 tenant -> idempotencyService.purgeExpired(PURGE_BATCH)));
+    }
+
+    @Scheduled(fixedDelayString = "${banking.holds.expiry-interval:PT5M}")
+    public void expireHolds() {
+        clusterLock.runExclusively("job:hold-expiry", () -> forEachTenant("hold expiry",
+                tenant -> holdService.expireDue(HOLD_BATCH)));
     }
 
     private void forEachTenant(String job, Consumer<TenantSummary> work) {

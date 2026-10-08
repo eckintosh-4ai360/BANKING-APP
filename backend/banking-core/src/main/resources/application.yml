@@ -86,6 +86,9 @@ banking:
     enabled: true
   outbox:
     relay-interval: PT5S
+  holds:
+    # How often holds past their expiry are released.
+    expiry-interval: PT5M
   idempotency:
     # How long a completed request is remembered; retries within this window get the stored response.
     retention: P1D
