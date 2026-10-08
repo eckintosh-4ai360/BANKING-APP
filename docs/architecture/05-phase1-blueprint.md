@@ -216,7 +216,7 @@ stateDiagram-v2
 ## 9. Outline of 1C–1D
 
 - **1C Web (done):** `web/` npm workspace; CMS and Super Admin over the 1A/1B API. See §10.
-- **1D Mobile:** `mobile/` pub workspace; design system package and two app shells with branding bootstrap and login.
+- **1D Mobile (done):** `mobile/` pub workspace. See §11.
 
 ## 10. Phase 1C: web consoles (implemented)
 
@@ -246,3 +246,32 @@ stateDiagram-v2
 | Playwright smoke | **Written but not yet executed**: it needs banking-core (local profile, PostgreSQL + Redis) and the CMS running, which this development machine can't host. Run it before the 1D gate. |
 
 **Known follow-ups.** QR-code rendering for MFA enrolment (manual key and `otpauth://` link work today); ESLint and Recharts dashboards (deferred); POST-based customer search to keep search terms out of access logs; Redis-backed refresh coordination if BFF instances can't use sticky sessions.
+
+## 11. Phase 1D: Flutter apps (implemented)
+
+**Members.** `banking_api` (models), `banking_core` (config, network, session, storage, money), `banking_ui` (design system), `field_officer_app`, `customer_app`. Architecture details are in [01 §4](01-system-architecture.md#4-flutter-architecture).
+
+**Key decisions.**
+
+| Decision | Why |
+|---|---|
+| Access token in memory, refresh token in the keystore | A stolen backup or file dump yields no usable token; spec rule "never expose secrets". |
+| Single-flight refresh, rotation persisted before use | Refresh tokens are single-use with reuse detection; a crash mid-rotation must not strand a consumed token. |
+| Wipe on rejected refresh, keep on network failure | A revoked session ends at once; going through a tunnel doesn't sign field officers out. |
+| `Money` without arithmetic or float constructors | The backend calculates every amount; the apps only display them. |
+| Customer sign-in gated by `CUSTOMER_MOBILE_APP` | White-label builds must not offer a service the institution hasn't enabled. |
+| Customer login contract fixed now | `POST /api/v1/customer/auth/login` with `{institutionCode, phoneNumber, password}` returns the shared `TokenResponse`. Refresh, MFA verify, logout and password change reuse `/api/v1/auth/*`. Phase 6 implements the endpoint; until then the app says sign-in "is not available yet". |
+| Field MFA enrolment in the web console | Showing the TOTP secret on the same phone that will hold the authenticator is poor practice; the app explains where to enrol. |
+| Hand-written models, no code generation yet | A handful of DTOs don't justify build_runner; Freezed and json_serializable come with the Phase 2 API surface. |
+| Disabled feature tiles with a reason | The home screens show upcoming features as disabled entries, never as fake data or dead buttons. |
+
+**Exit gate.**
+
+| Gate | Result |
+|---|---|
+| Widget tests green | 69 tests: models 9, core 29 (session flows incl. MFA, forced password change, refresh single flight, revoked and offline refresh, 401 recovery, idempotency header, sign-out), design system 15, field app 8 (full flows against the fake backend, inactivity sign-out), customer app 8 (branding bootstrap, feature gating, retry, sign-in). |
+| No `double` in money code | Enforced by a test scanning `banking_core/lib/src/money` and `banking_ui`'s money widget for `double`/`num`/`toDouble`. |
+| Static analysis | `flutter analyze`: no issues (strict casts, inference and raw types; unawaited futures are errors). |
+| Device builds | **Not produced on the development machine** (no Android SDK or Xcode). CI analyses and tests on Linux; release signing and store builds come with Phase 6. |
+
+**Known follow-ups.** Per-institution flavours (app id, icon, name) for store builds; certificate pinning decision; screenshot protection on balance and PIN screens (Phase 6); offline queue for the field app (Phase 4).
