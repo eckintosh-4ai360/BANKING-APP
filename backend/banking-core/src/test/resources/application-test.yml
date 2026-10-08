@@ -1,4 +1,6 @@
 banking:
+  scheduling:
+    enabled: false
   crypto:
     active-key-version: 1
     data-keys:

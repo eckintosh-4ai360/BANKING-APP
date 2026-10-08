@@ -81,6 +81,15 @@ logging:
     correlation: "[%X{correlationId:-},%X{tenantId:-},%X{actorId:-}] "
 
 banking:
+  # Background jobs (outbox relay, housekeeping). Tests switch them off and run jobs explicitly.
+  scheduling:
+    enabled: true
+  outbox:
+    relay-interval: PT5S
+  idempotency:
+    # How long a completed request is remembered; retries within this window get the stored response.
+    retention: P1D
+    purge-interval: PT1H
   security:
     jwt:
       issuer: banking-core
