@@ -1,0 +1,23 @@
+name: banking_core
+description: Networking, session, secure storage and money handling shared by the mobile apps.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+  flutter: ">=3.38.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  banking_api:
+    path: ../banking_api
+  dio: ^5.11.1
+  flutter_secure_storage: ^11.2.0
+  decimal: ^3.2.6
+  meta: ^1.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
