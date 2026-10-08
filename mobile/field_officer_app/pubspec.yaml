@@ -1,0 +1,27 @@
+name: field_officer_app
+description: Field officer app for customer onboarding and collections.
+publish_to: none
+version: 0.1.0+1
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  banking_api:
+    path: ../packages/banking_api
+  banking_core:
+    path: ../packages/banking_core
+  banking_ui:
+    path: ../packages/banking_ui
+  flutter_riverpod: ^3.4.3
+  go_router: ^18.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
