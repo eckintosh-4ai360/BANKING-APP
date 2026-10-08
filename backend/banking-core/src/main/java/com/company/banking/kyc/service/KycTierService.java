@@ -72,6 +72,14 @@ public class KycTierService {
                 .orElseThrow(() -> new BankingException(KycErrorCode.KYC_TIER_NOT_AVAILABLE));
     }
 
+    /**
+     * Rank of an active tier, for other modules (products, accounts); refuses unknown or inactive tiers.
+     */
+    @Transactional(readOnly = true)
+    public int requireActiveRank(String code) {
+        return requireActive(code).getTierRank();
+    }
+
     @Transactional(readOnly = true)
     public int rankOf(String code) {
         return repository.findById(new KycTierId(TenantContext.requireTenantId(), code))
