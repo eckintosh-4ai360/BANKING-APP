@@ -39,7 +39,7 @@ class ArchitectureTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"audit", "tenant", "branch", "iam", "staff", "platform", "customer", "kyc", "document",
-            "ledger"})
+            "ledger", "product", "account"})
     void entitiesAndRepositoriesArePrivateToTheirModule(String module) {
         noClasses().that().resideOutsideOfPackage(ROOT + "." + module + "..")
                 .should().dependOnClassesThat().resideInAnyPackage(
@@ -53,7 +53,8 @@ class ArchitectureTest {
         noClasses().that().resideInAPackage(ROOT + ".common..")
                 .should().dependOnClassesThat().resideInAnyPackage(ROOT + ".audit..", ROOT + ".tenant..",
                         ROOT + ".branch..", ROOT + ".iam..", ROOT + ".staff..", ROOT + ".platform..",
-                        ROOT + ".customer..", ROOT + ".kyc..", ROOT + ".document..", ROOT + ".ledger..")
+                        ROOT + ".customer..", ROOT + ".kyc..", ROOT + ".document..", ROOT + ".ledger..",
+                        ROOT + ".product..", ROOT + ".account..")
                 .check(classes);
     }
 
