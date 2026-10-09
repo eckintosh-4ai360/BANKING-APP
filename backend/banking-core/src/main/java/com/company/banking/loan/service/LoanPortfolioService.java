@@ -33,8 +33,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * End-of-day for loans ({@code LOAN_PORTFOLIO}, after deposit interest and susu, before the ledger snapshots the
  * day): each active loan is closed for the business date by {@link LoanService#closeDay} (interest, penalties,
- * delinquency band, suspense and provision), in batches that commit on their own; a resumed run skips loans already
- * done. Also the portfolio summary by band.
+ * delinquency band, suspense and provision) and its promises to pay due by then are decided, in batches that
+ * commit on their own; a resumed run skips work already done. Also the portfolio summary by band.
  */
 @Service
 @RequiredArgsConstructor
@@ -50,6 +50,7 @@ public class LoanPortfolioService implements EndOfDayStep {
     private final LoanRepository loans;
     private final LoanService loanService;
     private final LoanSettingsService settings;
+    private final LoanCollectionsService collections;
     private final LedgerAccountService ledgerAccounts;
     private final CurrencyService currencies;
 
@@ -68,7 +69,7 @@ public class LoanPortfolioService implements EndOfDayStep {
         UUID tenantId = TenantContext.requireTenantId();
         LocalDate closed = context.businessDate();
         List<LoanArrears.Band> ladder = context.inTransaction(settings::ladder);
-        int[] totals = new int[4]; // processed, reclassified, non-accrual, with penalties
+        int[] totals = new int[5]; // processed, reclassified, non-accrual, with penalties, promises decided
         UUID after = FIRST;
         while (true) {
             UUID cursor = after;
@@ -86,6 +87,7 @@ public class LoanPortfolioService implements EndOfDayStep {
                         totals[2] += result.nonAccrual() ? 1 : 0;
                         totals[3] += result.penalties().signum() > 0 ? 1 : 0;
                     }
+                    totals[4] += collections.settlePromisesDue(loanId, closed);
                 }
                 return null;
             });
@@ -93,7 +95,7 @@ public class LoanPortfolioService implements EndOfDayStep {
             context.checkpoint(STEP, "batch");
         }
         return Map.of("loans", totals[0], "reclassified", totals[1], "nonAccrual", totals[2],
-                "penalised", totals[3]);
+                "penalised", totals[3], "promisesDecided", totals[4]);
     }
 
     /**
