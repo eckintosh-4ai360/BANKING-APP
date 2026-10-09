@@ -2,12 +2,13 @@ package com.company.banking.operations;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.company.banking.common.eod.EndOfDayCheck;
-import com.company.banking.common.eod.EndOfDayProbe;
 import com.company.banking.ledger.LedgerIntegrationTest;
 import com.company.banking.ledger.dto.PostedJournal;
 import com.company.banking.ledger.service.BusinessDateService;
 import com.company.banking.operations.service.BusinessCalendarService;
+import com.company.banking.support.EndOfDayProbes;
+import com.company.banking.support.EndOfDayProbes.StopProbe;
+import com.company.banking.support.EndOfDayProbes.SwitchableCheck;
 import com.company.banking.support.Fixtures.StaffHandle;
 import com.company.banking.support.Fixtures.TenantHandle;
 import com.company.banking.support.ProductRequests;
@@ -20,8 +21,6 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import tools.jackson.databind.JsonNode;
@@ -30,44 +29,8 @@ import tools.jackson.databind.JsonNode;
  * End-of-day: the date rolls, the steps run for the closed date, and a run stopped at any checkpoint resumes to
  * exactly the result of an uninterrupted run.
  */
-@Import(EndOfDayIT.Probes.class)
+@Import(EndOfDayProbes.class)
 class EndOfDayIT extends LedgerIntegrationTest {
-
-    /** Stops a run (as a crash would) the first time the armed checkpoint is reached. */
-    static class StopProbe implements EndOfDayProbe {
-        volatile String armedStep;
-        volatile String armedPoint;
-
-        @Override
-        public void reached(String step, String point) {
-            if (step.equals(armedStep) && point.equals(armedPoint)) {
-                armedStep = null;
-                throw new IllegalStateException("Simulated crash at " + step + "/" + point);
-            }
-        }
-    }
-
-    static class SwitchableCheck implements EndOfDayCheck {
-        volatile String problem;
-
-        @Override
-        public List<String> problems(LocalDate businessDate) {
-            return problem == null ? List.of() : List.of(problem);
-        }
-    }
-
-    @TestConfiguration
-    static class Probes {
-        @Bean
-        StopProbe stopProbe() {
-            return new StopProbe();
-        }
-
-        @Bean
-        SwitchableCheck switchableCheck() {
-            return new SwitchableCheck();
-        }
-    }
 
     @Autowired
     private StopProbe probe;
