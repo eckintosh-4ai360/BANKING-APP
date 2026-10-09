@@ -6,3 +6,4 @@ export { PasswordChangeForm, MfaEnrollment } from './auth/security-forms';
 export { AuthLayout, LoginPage, PasswordSetupPage, MfaSetupPage } from './components/auth-pages';
 export { OneTimeCredentialDialog } from './components/one-time-secret';
 export { AuditLogView } from './components/audit-log-view';
+export { AuditSealsView } from './components/audit-seals-view';
