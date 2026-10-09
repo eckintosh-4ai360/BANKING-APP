@@ -9,6 +9,7 @@ import com.company.banking.ledger.service.AccountingPeriodService;
 import com.company.banking.ledger.service.BusinessDateService;
 import com.company.banking.operations.service.BusinessCalendarService;
 import com.company.banking.ledger.service.ChartOfAccountService;
+import com.company.banking.loan.service.LoanSettingsService;
 import com.company.banking.susu.service.SusuPlanService;
 import com.company.banking.tenant.dto.TenantSummary;
 import com.company.banking.tenant.service.TenantProvisioningService;
@@ -40,6 +41,7 @@ public class TenantConfigurationBackfill implements ApplicationRunner {
     private final BusinessDateService businessDateService;
     private final BusinessCalendarService businessCalendarService;
     private final SusuPlanService susuPlanService;
+    private final LoanSettingsService loanSettingsService;
     private final RoleService roleService;
 
     @Override
@@ -61,6 +63,7 @@ public class TenantConfigurationBackfill implements ApplicationRunner {
             businessDateService.provision();
             businessCalendarService.provisionDefaults();
             susuPlanService.provisionDefaults();
+            loanSettingsService.provisionDefaults();
             accountingPeriodService.provisionCurrentPeriod();
             roleService.provisionMissingDefaultRoles();
             return null;
