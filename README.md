@@ -4,9 +4,9 @@ A multi-tenant core banking and microfinance platform for African financial inst
 
 | Component | Stack | Status |
 |---|---|---|
-| `backend/banking-core` | Java 21, Spring Boot 4.1 modular monolith, PostgreSQL 18, Redis, Flyway | **Phases 1A, 1B, 2 and 3 complete** |
-| `web/institution-cms`, `web/super-admin` | Next.js 16, React 19, TypeScript, Tailwind 4, TanStack Query/Table, RHF + Zod | **Phase 1C complete, Phase 2 and 3 screens added** (Playwright smoke suite needs a running stack) |
-| `mobile/customer_app`, `mobile/field_officer_app` | Flutter 3.47, Riverpod 3, GoRouter 18, Dio 5, secure storage | **Phase 1D complete** (tested with `flutter test`; device builds not yet produced) |
+| `backend/banking-core` | Java 21, Spring Boot 4.1 modular monolith, PostgreSQL 18, Redis, Flyway | **Phases 1A, 1B, 2, 3 and 4 complete** |
+| `web/institution-cms`, `web/super-admin` | Next.js 16, React 19, TypeScript, Tailwind 4, TanStack Query/Table, RHF + Zod | **Phase 1C complete, Phase 2, 3 and 4 screens added** (Playwright smoke suite needs a running stack) |
+| `mobile/customer_app`, `mobile/field_officer_app` | Flutter 3.47, Riverpod 3, GoRouter 18, Dio 5, secure storage | **Phase 1D complete, field app offline collections added** (tested with `flutter test`; device builds not yet produced) |
 
 Start with the architecture docs in [`docs/`](docs/README.md). The [specification review](docs/architecture/00-specification-review.md) explains the key decisions, and the [roadmap](docs/architecture/04-roadmap.md) gives the build order and exit gates.
 
@@ -60,9 +60,17 @@ Start with the architecture docs in [`docs/`](docs/README.md). The [specificatio
 - **Sealed audit trail:** every hour of every institution's audit trail is sealed in a signed hash chain, so any change made later, even directly in the database, is found.
 - **CMS screens:** my till, cash (vaults and drawers, movements, teller sessions, end-of-day positions), end of day and calendar, and audit integrity seals (also in Super Admin).
 
+### Phase 4: microfinance
+
+- **Field officers** carry a cash with collectors account: every collection raises it, only cash handed to a teller lowers it, and the officer's position always reconciles with the ledger.
+- **Offline collections** sync idempotently: each carries the phone's own reference and running number, so a batch sent again posts nothing twice, and a missing number raises an alert until it arrives. Late syncs, conflicting resubmissions and offline cash above the officer's limit are alerted too.
+- **Susu plans** schedule contributions cycle by cycle; field collections pay the oldest unpaid ones, end-of-day marks missed contributions and charges each cycle's commission on what was paid.
+- **Field app:** an encrypted on-phone queue (Drift on SQLite3MultipleCiphers, key in the keystore) for collections and visits, offline limits enforced on the phone, sync with clear outcomes.
+- **CMS screens:** field operations (officers, assignments, collections, visits, alerts), susu plans, and receiving field cash at the till.
+
 ### Tests
 
-**289 backend tests** (unit, ArchUnit, integration against real PostgreSQL), **142 web tests** (Vitest + Testing Library) and **69 mobile tests** (Flutter unit and widget tests). They cover cross-tenant isolation, RLS, token reuse, lockout, the permission matrix, PII in logs, the four-eyes rule, ledger invariants, idempotent retries, concurrent withdrawals and transfers, maker-checker, end-of-day stopped and resumed at every checkpoint, interest to the cent, teller cash against the ledger, audit tampering, session sealing, CSRF, refresh races, proxy allow-lists and form validation.
+**301 backend tests** (unit, ArchUnit, integration against real PostgreSQL), **145 web tests** (Vitest + Testing Library) and **78 mobile tests** (Flutter unit and widget tests). They cover cross-tenant isolation, RLS, token reuse, lockout, the permission matrix, PII in logs, the four-eyes rule, ledger invariants, idempotent retries, concurrent withdrawals and transfers, maker-checker, end-of-day stopped and resumed at every checkpoint, offline batches replayed without double posting, sequence gaps, interest to the cent, teller cash against the ledger, audit tampering, session sealing, CSRF, refresh races, proxy allow-lists and form validation.
 
 ## Quick start
 
