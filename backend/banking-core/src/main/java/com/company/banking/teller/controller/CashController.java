@@ -5,6 +5,7 @@ import com.company.banking.common.api.PageRequests;
 import com.company.banking.common.api.PageResponse;
 import com.company.banking.teller.dto.CashMovementRequest;
 import com.company.banking.teller.dto.CashMovementResponse;
+import com.company.banking.teller.dto.CashPositionResponse;
 import com.company.banking.teller.dto.CreateDrawerRequest;
 import com.company.banking.teller.dto.CreateVaultRequest;
 import com.company.banking.teller.dto.DrawerResponse;
@@ -12,14 +13,17 @@ import com.company.banking.teller.dto.SupervisorDecisionRequest;
 import com.company.banking.teller.dto.VaultResponse;
 import com.company.banking.teller.service.CashMovementService;
 import com.company.banking.teller.service.CashPointService;
+import com.company.banking.teller.service.CashReconciliationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,6 +43,7 @@ public class CashController {
 
     private final CashPointService cashPoints;
     private final CashMovementService movements;
+    private final CashReconciliationService reconciliation;
 
     @GetMapping("/vaults")
     @PreAuthorize("hasAnyAuthority('cash.view', 'cash.manage')")
@@ -68,6 +73,15 @@ public class CashController {
     @Operation(summary = "Create a teller drawer")
     public ApiResponse<DrawerResponse> createDrawer(@Valid @RequestBody CreateDrawerRequest request) {
         return ApiResponse.ok("Drawer created", cashPoints.createDrawer(request));
+    }
+
+    @GetMapping("/positions")
+    @PreAuthorize("hasAnyAuthority('cash.view', 'cash.manage', 'teller.supervise')")
+    @Operation(summary = "End-of-day cash positions of the caller's vaults and drawers (latest closed date by default)")
+    public ApiResponse<List<CashPositionResponse>> positions(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) UUID branchId) {
+        return ApiResponse.ok(reconciliation.positions(date, branchId));
     }
 
     @GetMapping("/movements")
