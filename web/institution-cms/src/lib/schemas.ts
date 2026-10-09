@@ -129,3 +129,73 @@ export type CreateCustomerInput = z.input<typeof createCustomerSchema>;
 export type CreateCustomerValues = z.output<typeof createCustomerSchema>;
 
 export const contactSchema = z.object({ ...contact });
+
+// ------------------------------------------------------------------------------------------------- banking (Phase 2)
+
+/**
+ * An amount exactly as typed: digits with an optional decimal part. It stays a string all the way to the backend,
+ * which also checks the currency's precision; the browser never turns it into a number.
+ */
+export const AMOUNT = /^(0|[1-9][0-9]{0,14})(\.[0-9]{1,4})?$/;
+export const ACCOUNT_NUMBER = /^[0-9]{10,20}$/;
+
+export const amountText = z
+  .string()
+  .trim()
+  .regex(AMOUNT, 'Enter an amount such as 1250.00')
+  .refine((value) => /[1-9]/.test(value), 'Enter an amount above zero');
+
+export const optionalAmount = optionalPattern(AMOUNT, 'Enter an amount such as 1250.00');
+
+/** Deposit, withdrawal or transfer; a transfer also needs the receiving account number. */
+export function movementSchema(transfer: boolean) {
+  return z
+    .object({
+      amount: amountText,
+      narration: optionalText(200),
+      externalReference: optionalText(60),
+      toAccountNumber: z.string().trim(),
+    })
+    .superRefine((values, context) => {
+      if (transfer && !ACCOUNT_NUMBER.test(values.toAccountNumber)) {
+        context.addIssue({ code: 'custom', path: ['toAccountNumber'], message: 'Enter the 10 to 20 digit account number' });
+      }
+    });
+}
+export type MovementInput = z.input<ReturnType<typeof movementSchema>>;
+export type MovementValues = z.output<ReturnType<typeof movementSchema>>;
+
+export const holdSchema = z.object({
+  amount: amountText,
+  holdType: z.enum(['LIEN', 'LEGAL', 'FRAUD_REVIEW']),
+  reason: requiredText(300),
+  reference: optionalText(60),
+});
+export type HoldInput = z.input<typeof holdSchema>;
+export type HoldValues = z.output<typeof holdSchema>;
+
+export const PRODUCT_CODE = /^[A-Z0-9][A-Z0-9_-]{1,29}$/;
+const RATE = /^(100|[0-9]{1,2})(\.[0-9]{1,6})?$/;
+
+/**
+ * Product identity and the terms of a version in one flat form (identity fields are read-only when editing a draft).
+ * Fees here are flat amounts; percentage charges are configured through the API and kept as they are.
+ */
+export const productFormSchema = z.object({
+  code: z.string().trim().toUpperCase().regex(PRODUCT_CODE, 'Use 2 to 30 capital letters, digits, - or _'),
+  name: requiredText(120),
+  productType: z.enum(['SAVINGS', 'CURRENT', 'SUSU', 'FIXED_DEPOSIT', 'TARGET_SAVINGS']),
+  description: optionalText(500),
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, 'Use a 3-letter currency code'),
+  minOpeningBalance: optionalAmount,
+  minOperatingBalance: optionalAmount,
+  maxBalance: optionalAmount,
+  interestRate: optionalPattern(RATE, 'Enter a yearly rate between 0 and 100'),
+  requiredKycTier: optionalText(20),
+  maxWithdrawalAmount: optionalAmount,
+  dailyWithdrawalLimit: optionalAmount,
+  withdrawalFee: optionalAmount,
+  transferFee: optionalAmount,
+});
+export type ProductFormInput = z.input<typeof productFormSchema>;
+export type ProductFormValues = z.output<typeof productFormSchema>;

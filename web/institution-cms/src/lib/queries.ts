@@ -1,6 +1,6 @@
 'use client';
 
-import { bff, Permission, query, type Branch, type KycTier, type Page, type Role } from '@banking/api';
+import { bff, Permission, query, type Branch, type KycTier, type Page, type Product, type Role } from '@banking/api';
 import { useQuery } from '@tanstack/react-query';
 import { useCan } from './me';
 
@@ -64,6 +64,17 @@ export function useRoleOptions() {
     queryKey: ['roles'],
     queryFn: ({ signal }) => bff<Role[]>('/roles', { signal }),
     enabled: allowed,
+  });
+}
+
+/** Deposit products (for opening accounts and the products screens). */
+export function useProducts() {
+  const allowed = useCan(Permission.productView, Permission.productManage);
+  return useQuery({
+    queryKey: ['products'],
+    queryFn: ({ signal }) => bff<Product[]>('/products', { signal }),
+    enabled: allowed,
+    staleTime: 60_000,
   });
 }
 
