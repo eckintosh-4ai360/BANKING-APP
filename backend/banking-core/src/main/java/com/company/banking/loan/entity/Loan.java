@@ -163,6 +163,15 @@ public class Loan {
     @Column(name = "closed_on")
     private LocalDate closedOn;
 
+    @Column(name = "provision_held", nullable = false, precision = 19, scale = 4)
+    private BigDecimal provisionHeld;
+
+    @Column(name = "penalty_accrued_through")
+    private LocalDate penaltyAccruedThrough;
+
+    @Column(name = "portfolio_processed_through")
+    private LocalDate portfolioProcessedThrough;
+
     @Version
     @Column(name = "version", nullable = false)
     private Long version;
@@ -215,6 +224,7 @@ public class Loan {
         this.status = Status.ACTIVE;
         this.scheduleVersion = 1;
         this.interestRecognised = BigDecimal.ZERO;
+        this.provisionHeld = BigDecimal.ZERO;
     }
 
     public void recordAccrual(BigDecimal recognised, LocalDate through) {
@@ -226,6 +236,23 @@ public class Loan {
         this.daysPastDue = daysPastDue;
         this.delinquencyBand = band;
         this.nonAccrual = nonAccrual;
+    }
+
+    public void holdProvision(BigDecimal amount) {
+        this.provisionHeld = amount;
+    }
+
+    public void penaltiesAccruedThrough(LocalDate date) {
+        this.penaltyAccruedThrough = date;
+    }
+
+    /** End-of-day classified the loan for this business date (a resumed run skips it). */
+    public void processedThrough(LocalDate date) {
+        this.portfolioProcessedThrough = date;
+    }
+
+    public boolean isProcessedThrough(LocalDate date) {
+        return portfolioProcessedThrough != null && !portfolioProcessedThrough.isBefore(date);
     }
 
     public void close(Status status, LocalDate on) {

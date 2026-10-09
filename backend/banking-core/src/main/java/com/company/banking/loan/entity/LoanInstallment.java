@@ -10,6 +10,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.UUID;
 import lombok.AccessLevel;
@@ -69,6 +70,9 @@ public class LoanInstallment implements Persistable<LoanInstallment.Key> {
     @Column(name = "paid_on")
     private LocalDate paidOn;
 
+    @Column(name = "penalty_exact", nullable = false, precision = 28, scale = 10)
+    private BigDecimal penaltyExact;
+
     @Transient
     @Getter(AccessLevel.NONE)
     private boolean newEntity = true;
@@ -87,6 +91,7 @@ public class LoanInstallment implements Persistable<LoanInstallment.Key> {
         this.interestPaid = BigDecimal.ZERO;
         this.penaltyPaid = BigDecimal.ZERO;
         this.interestWaived = BigDecimal.ZERO;
+        this.penaltyExact = BigDecimal.ZERO;
     }
 
     public int getNumber() {
@@ -119,8 +124,20 @@ public class LoanInstallment implements Persistable<LoanInstallment.Key> {
         }
     }
 
-    public void addPenalty(BigDecimal amount) {
-        this.penaltyDue = penaltyDue.add(amount);
+    /**
+     * Adds exact penalty; what falls due is the rounded exact total (cumulative rounding, no drift).
+     *
+     * @return the penalty that fell due now
+     */
+    public BigDecimal accruePenalty(BigDecimal exact, int minorUnits, RoundingMode rounding) {
+        this.penaltyExact = penaltyExact.add(exact).setScale(10, RoundingMode.HALF_EVEN);
+        BigDecimal due = penaltyExact.setScale(minorUnits, rounding);
+        if (due.compareTo(penaltyDue) <= 0) {
+            return BigDecimal.ZERO.setScale(minorUnits);
+        }
+        BigDecimal added = due.subtract(penaltyDue);
+        this.penaltyDue = due;
+        return added;
     }
 
     /** Interest that will not be collected (e.g. not yet earned when the loan is settled early). */
