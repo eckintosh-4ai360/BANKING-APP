@@ -41,6 +41,7 @@ import com.company.banking.loan.repository.LoanInstallmentRepository;
 import com.company.banking.loan.repository.LoanRepaymentRepository;
 import com.company.banking.loan.repository.LoanRepository;
 import com.company.banking.loan.schedule.InterestEarned;
+import com.company.banking.loan.schedule.LoanArrears;
 import com.company.banking.loan.schedule.RepaymentAllocator;
 import com.company.banking.loan.schedule.ScheduleCalculator;
 import com.company.banking.transaction.dto.LoanMovementCommand;
@@ -48,6 +49,7 @@ import com.company.banking.transaction.dto.MovementResponse;
 import com.company.banking.transaction.model.TransactionType;
 import com.company.banking.transaction.service.TransactionService;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -305,8 +307,8 @@ public class LoanService {
     }
 
     /**
-     * Credits what the repayment pays to the loan's accounts. Interest collected on a non-accrual loan was held in
-     * suspense, not income: collecting it recognises it.
+     * Credits what the repayment pays to the loan's accounts. Interest and penalties collected on a non-accrual loan
+     * were held in suspense, not income: collecting them recognises them.
      */
     private List<PostingLine> repaymentLines(Loan loan, RepaymentAllocator.Result split) {
         String narration = "Loan " + loan.getLoanNumber();
@@ -328,13 +330,19 @@ public class LoanService {
         if (split.penalty().signum() > 0) {
             lines.add(PostingLine.toLedgerAccount(loan.getPenaltyLedgerAccountId(), EntryDirection.CREDIT,
                     split.penalty(), narration + " penalties"));
+            if (loan.isNonAccrual()) {
+                lines.add(PostingLine.toGl(suspenseGl(), loan.getBranchId(), loan.getCurrency(), EntryDirection.DEBIT,
+                        split.penalty(), narration + " penalties collected"));
+                lines.add(PostingLine.toGl(loan.getPenaltyIncomeGlId(), loan.getBranchId(), loan.getCurrency(),
+                        EntryDirection.CREDIT, split.penalty(), narration + " penalties collected"));
+            }
         }
         return lines;
     }
 
     /**
      * Closes a settled loan after checking its accounts are all at zero (anything else is a bug, so the whole
-     * repayment rolls back), and hands back its collateral.
+     * repayment rolls back), releases its provision and hands back its collateral.
      */
     private void close(Loan loan, LocalDate today) {
         Map<UUID, BalanceSnapshot> balances = ledgerAccounts.balances(List.of(loan.getPrincipalLedgerAccountId(),
@@ -343,6 +351,14 @@ public class LoanService {
             throw new IllegalStateException("Loan " + loan.getLoanNumber() + " settled with balances left: "
                     + balances.values());
         }
+        if (loan.getProvisionHeld().signum() > 0) {
+            String narration = "Loan " + loan.getLoanNumber() + " repaid: provision released";
+            postingEngine.post(new PostingRequest(JournalSource.PROVISION, loan.getLoanNumber(), null,
+                    loan.getBranchId(), null, narration, null, provisionLines(loan, loan.getProvisionHeld().negate(),
+                    narration)));
+            loan.holdProvision(BigDecimal.ZERO);
+        }
+        loan.classify(0, null, false);
         loan.close(Loan.Status.CLOSED, today);
         applicationService.releaseAllCollateral(loan.getApplicationId());
         auditService.record(AuditEvent.builder("LOAN_CLOSED", RESOURCE)
@@ -356,28 +372,188 @@ public class LoanService {
     // -------------------------------------------------------------------------------------------------- accrual
 
     /**
-     * Recognises the interest the schedule has earned by {@code date} and not yet recognised: Dr interest
-     * receivable, Cr interest income (interest in suspense for a non-accrual loan). Recognition is cumulative, so it
-     * never drifts and running it twice changes nothing.
-     *
-     * @return the amount recognised now
+     * Recognises the interest the schedule has earned by {@code date} and not yet recognised, on today's business
+     * date (before a repayment).
      */
-    @Transactional(propagation = Propagation.MANDATORY)
-    BigDecimal accrueThrough(Loan loan, List<LoanInstallment> schedule, LocalDate date) {
+    private void accrueThrough(Loan loan, List<LoanInstallment> schedule, LocalDate date) {
+        String narration = "Loan " + loan.getLoanNumber() + " interest to " + date;
+        List<PostingLine> lines = new ArrayList<>();
+        if (accrualLines(loan, schedule, date, lines, narration).signum() > 0) {
+            postingEngine.post(new PostingRequest(JournalSource.LOAN, loan.getLoanNumber(), null, loan.getBranchId(),
+                    null, narration, null, lines));
+            loans.saveAndFlush(loan);
+        }
+    }
+
+    /**
+     * Dr interest receivable, Cr interest income (interest in suspense for a non-accrual loan) for what the schedule
+     * has earned by {@code date} beyond what is recognised. Recognition is cumulative, so it never drifts and running
+     * it twice adds nothing.
+     *
+     * @return the interest recognised now
+     */
+    private BigDecimal accrualLines(Loan loan, List<LoanInstallment> schedule, LocalDate date, List<PostingLine> lines,
+                                    String narration) {
         BigDecimal earned = earnedThrough(loan, schedule, date);
         BigDecimal due = earned.subtract(loan.getInterestRecognised());
         if (due.signum() <= 0) {
             return BigDecimal.ZERO;
         }
-        String narration = "Loan " + loan.getLoanNumber() + " interest to " + date;
-        postingEngine.post(new PostingRequest(JournalSource.LOAN, loan.getLoanNumber(), null, loan.getBranchId(), null,
-                narration, null, List.of(
-                PostingLine.toLedgerAccount(loan.getInterestLedgerAccountId(), EntryDirection.DEBIT, due, narration),
-                PostingLine.toGl(loan.isNonAccrual() ? suspenseGl() : loan.getInterestIncomeGlId(),
-                        loan.getBranchId(), loan.getCurrency(), EntryDirection.CREDIT, due, narration))));
+        lines.add(PostingLine.toLedgerAccount(loan.getInterestLedgerAccountId(), EntryDirection.DEBIT, due,
+                narration));
+        lines.add(PostingLine.toGl(loan.isNonAccrual() ? suspenseGl() : loan.getInterestIncomeGlId(),
+                loan.getBranchId(), loan.getCurrency(), EntryDirection.CREDIT, due, narration));
         loan.recordAccrual(earned, date);
-        loans.saveAndFlush(loan);
         return due;
+    }
+
+    // ---------------------------------------------------------------------------------------------- end of day
+
+    /**
+     * What end-of-day did to one loan.
+     *
+     * @param bandChanged the loan moved to another delinquency band
+     */
+    record DayResult(BigDecimal interest, BigDecimal penalties, BigDecimal provisionChange, boolean nonAccrual,
+                     boolean bandChanged) {
+    }
+
+    /**
+     * Closes the business date for a loan, in one journal on that date: interest earned, penalties on what is
+     * overdue past the grace days, the days past due and delinquency band, the move of receivables into suspense (or
+     * back) when accrual is suspended (or resumed), and the provision the band requires. Does nothing for a loan
+     * already done for the date, so a resumed run is safe.
+     *
+     * @return null when there was nothing to do
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    DayResult closeDay(UUID loanId, LocalDate closed, List<LoanArrears.Band> ladder) {
+        Loan loan = loans.lockByTenantIdAndId(TenantContext.requireTenantId(), loanId).orElseThrow();
+        if (!loan.isActive() || loan.isProcessedThrough(closed)) {
+            return null;
+        }
+        List<LoanInstallment> schedule = schedule(loan);
+        int minorUnits = currencies.require(loan.getCurrency()).minorUnits();
+        String narration = "Loan " + loan.getLoanNumber() + " end of day " + closed;
+        List<PostingLine> lines = new ArrayList<>();
+
+        BigDecimal interest = accrualLines(loan, schedule, closed, lines, narration);
+        BigDecimal penalties = penaltyLines(loan, schedule, closed, minorUnits, lines, narration);
+
+        int daysPastDue = LoanArrears.daysPastDue(schedule.stream()
+                .map(installment -> new LoanArrears.Owing(installment.getDueDate(), outstanding(installment)))
+                .toList(), closed);
+        LoanArrears.Band band = LoanArrears.bandFor(ladder, daysPastDue);
+        String previousBand = loan.getDelinquencyBand();
+        Map<UUID, BalanceSnapshot> balances = ledgerAccounts.balances(List.of(loan.getPrincipalLedgerAccountId(),
+                loan.getInterestLedgerAccountId(), loan.getPenaltyLedgerAccountId()));
+        if (band.suspendAccrual() != loan.isNonAccrual()) {
+            suspenseLines(loan, band.suspendAccrual(),
+                    balances.get(loan.getInterestLedgerAccountId()).ledgerBalance().add(interest),
+                    balances.get(loan.getPenaltyLedgerAccountId()).ledgerBalance().add(penalties), lines, narration);
+        }
+        loan.classify(daysPastDue, band.code(), band.suspendAccrual());
+
+        BigDecimal required = LoanArrears.provision(balances.get(loan.getPrincipalLedgerAccountId()).ledgerBalance(),
+                band.provisionRate(), minorUnits);
+        BigDecimal provisionChange = required.subtract(loan.getProvisionHeld());
+        if (provisionChange.signum() != 0) {
+            lines.addAll(provisionLines(loan, provisionChange, narration + " provision"));
+            loan.holdProvision(required);
+        }
+        loan.processedThrough(closed);
+        if (!lines.isEmpty()) {
+            postingEngine.postForClosedDate(new PostingRequest(JournalSource.EOD, loan.getLoanNumber(), null,
+                    loan.getBranchId(), null, narration, null, lines), closed);
+        }
+        installments.saveAllAndFlush(schedule);
+        loans.saveAndFlush(loan);
+
+        boolean bandChanged = !band.code().equals(previousBand);
+        if (bandChanged) {
+            auditService.record(AuditEvent.builder("LOAN_RECLASSIFIED", RESOURCE)
+                    .resourceId(loanId)
+                    .resourceReference(loan.getLoanNumber())
+                    .branchId(loan.getBranchId())
+                    .metadata("from", previousBand)
+                    .metadata("to", band.code())
+                    .metadata("daysPastDue", daysPastDue)
+                    .metadata("nonAccrual", band.suspendAccrual())
+                    .metadata("businessDate", closed.toString())
+                    .build());
+        }
+        return new DayResult(interest, penalties, provisionChange, band.suspendAccrual(), bandChanged);
+    }
+
+    /**
+     * Penalties for the days since they last ran, on each installment's overdue principal and interest: Dr penalty
+     * receivable, Cr penalty income (suspense for a non-accrual loan).
+     */
+    private BigDecimal penaltyLines(Loan loan, List<LoanInstallment> schedule, LocalDate closed, int minorUnits,
+                                    List<PostingLine> lines, String narration) {
+        LocalDate from = loan.getPenaltyAccruedThrough() != null ? loan.getPenaltyAccruedThrough()
+                : loan.getDisbursementDate();
+        BigDecimal total = BigDecimal.ZERO;
+        if (loan.getPenaltyRate().signum() > 0 && closed.isAfter(from)) {
+            RoundingMode rounding = RoundingMode.valueOf(loan.getRoundingMode());
+            for (LoanInstallment installment : schedule) {
+                BigDecimal overdue = installment.principalOutstanding().add(installment.interestOutstanding());
+                long days = LoanArrears.penaltyDays(installment.getDueDate(), loan.getPenaltyGraceDays(), from, closed);
+                BigDecimal exact = LoanArrears.penalty(overdue, loan.getPenaltyRate(), days);
+                if (exact.signum() > 0) {
+                    total = total.add(installment.accruePenalty(exact, minorUnits, rounding));
+                }
+            }
+        }
+        loan.penaltiesAccruedThrough(closed);
+        if (total.signum() > 0) {
+            lines.add(PostingLine.toLedgerAccount(loan.getPenaltyLedgerAccountId(), EntryDirection.DEBIT, total,
+                    narration + " penalties"));
+            lines.add(PostingLine.toGl(loan.isNonAccrual() ? suspenseGl() : loan.getPenaltyIncomeGlId(),
+                    loan.getBranchId(), loan.getCurrency(), EntryDirection.CREDIT, total, narration + " penalties"));
+        }
+        return total;
+    }
+
+    /**
+     * Suspending accrual takes the uncollected interest and penalties out of income into suspense (Dr income, Cr
+     * suspense); resuming it puts them back. While suspended, suspense therefore always equals the loan's
+     * receivables.
+     */
+    private void suspenseLines(Loan loan, boolean suspend, BigDecimal interestReceivable,
+                               BigDecimal penaltyReceivable, List<PostingLine> lines, String narration) {
+        EntryDirection incomeSide = suspend ? EntryDirection.DEBIT : EntryDirection.CREDIT;
+        EntryDirection suspenseSide = suspend ? EntryDirection.CREDIT : EntryDirection.DEBIT;
+        String text = narration + (suspend ? " accrual suspended" : " accrual resumed");
+        if (interestReceivable.signum() > 0) {
+            lines.add(PostingLine.toGl(loan.getInterestIncomeGlId(), loan.getBranchId(), loan.getCurrency(),
+                    incomeSide, interestReceivable, text));
+        }
+        if (penaltyReceivable.signum() > 0) {
+            lines.add(PostingLine.toGl(loan.getPenaltyIncomeGlId(), loan.getBranchId(), loan.getCurrency(),
+                    incomeSide, penaltyReceivable, text));
+        }
+        BigDecimal total = interestReceivable.add(penaltyReceivable);
+        if (total.signum() > 0) {
+            lines.add(PostingLine.toGl(suspenseGl(), loan.getBranchId(), loan.getCurrency(), suspenseSide, total,
+                    text));
+        }
+    }
+
+    /**
+     * Raises (positive change) or releases the loan's provision: Dr provision expense, Cr allowance for loan
+     * losses, or the reverse.
+     */
+    private List<PostingLine> provisionLines(Loan loan, BigDecimal change, String narration) {
+        BigDecimal amount = change.abs();
+        UUID expense = chartOfAccounts.requireSystem(SystemAccount.PROVISION_EXPENSE).id();
+        UUID allowance = chartOfAccounts.requireSystem(SystemAccount.LOAN_LOSS_PROVISION).id();
+        boolean raise = change.signum() > 0;
+        return List.of(
+                PostingLine.toGl(raise ? expense : allowance, loan.getBranchId(), loan.getCurrency(),
+                        EntryDirection.DEBIT, amount, narration),
+                PostingLine.toGl(raise ? allowance : expense, loan.getBranchId(), loan.getCurrency(),
+                        EntryDirection.CREDIT, amount, narration));
     }
 
     private BigDecimal earnedThrough(Loan loan, List<LoanInstallment> schedule, LocalDate date) {
@@ -525,7 +701,8 @@ public class LoanService {
                     balance(balances, loan.getInterestLedgerAccountId(), currency),
                     balance(balances, loan.getPenaltyLedgerAccountId(), currency), present(arrears, currency),
                     next == null ? null : next.getDueDate(),
-                    next == null ? null : present(outstanding(next), currency), loan.getClosedOn(), loan.getVersion());
+                    next == null ? null : present(outstanding(next), currency),
+                    present(loan.getProvisionHeld(), currency), loan.getClosedOn(), loan.getVersion());
         }).toList();
     }
 
