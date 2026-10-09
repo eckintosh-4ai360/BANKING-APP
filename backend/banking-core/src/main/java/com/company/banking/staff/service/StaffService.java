@@ -45,6 +45,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -116,6 +118,19 @@ public class StaffService {
         return staffRepository.findByTenantIdAndId(TenantContext.requireTenantId(), staffId)
                 .map(Staff::isActive)
                 .orElse(false);
+    }
+
+    /**
+     * Display names of staff members of this institution, for other modules' lists (ids not found are left out).
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, String> names(Collection<UUID> staffIds) {
+        UUID tenantId = TenantContext.requireTenantId();
+        Map<UUID, String> names = new HashMap<>();
+        staffRepository.findAllById(staffIds).stream()
+                .filter(staff -> staff.getTenantId().equals(tenantId))
+                .forEach(staff -> names.put(staff.getId(), staff.getFirstName() + " " + staff.getLastName()));
+        return names;
     }
 
     @Transactional
