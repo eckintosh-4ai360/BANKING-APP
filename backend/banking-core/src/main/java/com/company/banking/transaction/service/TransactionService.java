@@ -41,6 +41,7 @@ import com.company.banking.teller.exception.TellerErrorCode;
 import com.company.banking.teller.service.TellerSessionService;
 import com.company.banking.transaction.dto.CashDepositRequest;
 import com.company.banking.transaction.dto.CashWithdrawalRequest;
+import com.company.banking.transaction.dto.FieldCollectionCommand;
 import com.company.banking.transaction.dto.MovementResponse;
 import com.company.banking.transaction.dto.MovementResponse.BalanceAfter;
 import com.company.banking.transaction.dto.ReverseTransactionRequest;
@@ -142,8 +143,35 @@ public class TransactionService {
             addCharge(lines, account, terms, charge);
             return post(new Movement(TransactionType.CASH_DEPOSIT, null, account, drawer.branchId(), drawer.drawerId(),
                     amount, charge.amount(), account.currency(), narration, request.externalReference(),
-                    idempotencyKey), lines, null);
+                    idempotencyKey, TransactionChannel.BRANCH), lines, null);
         });
+    }
+
+    /**
+     * Posts cash a field officer took for a customer: Dr the officer's cash with collectors, Cr the account. The
+     * account must accept money and stay within its product's maximum balance; no per-movement charge applies (susu
+     * products charge a cycle commission instead). Runs inside the field operations module's transaction, whose
+     * collection record (unique client reference) makes it happen once, so there is no request key here.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public MovementResponse postFieldCollection(FieldCollectionCommand command) {
+        PostingAccount account = accountService.lockForPosting(List.of(command.accountId())).get(command.accountId());
+        if (!account.creditAllowed()) {
+            throw new BankingException(TransactionErrorCode.ACCOUNT_NOT_CREDITABLE);
+        }
+        if (!account.currency().equals(command.currency())) {
+            throw new BankingException(TransactionErrorCode.CURRENCY_MISMATCH);
+        }
+        BigDecimal amount = validAmount(command.amount(), account.currency());
+        requireBelowMaximum(account, productService.terms(account.productVersionId()), amount);
+        String narration = narration(command.narration(), "Field collection");
+        List<PostingLine> lines = List.of(
+                PostingLine.toLedgerAccount(command.collectorLedgerAccountId(), EntryDirection.DEBIT, amount,
+                        narration),
+                PostingLine.toLedgerAccount(account.ledgerAccountId(), EntryDirection.CREDIT, amount, narration));
+        return post(new Movement(TransactionType.FIELD_COLLECTION, null, account, command.branchId(), null, amount,
+                BigDecimal.ZERO, account.currency(), narration, command.externalReference(), null,
+                TransactionChannel.FIELD), lines, null);
     }
 
     @Transactional
@@ -246,7 +274,7 @@ public class TransactionService {
     private record Movement(TransactionType type, PostingAccount debit, PostingAccount credit, UUID branchId,
                             UUID drawerId,
                             BigDecimal amount, BigDecimal fee, String currency, String narration,
-                            String externalReference, String idempotencyKey) {
+                            String externalReference, String idempotencyKey, TransactionChannel channel) {
     }
 
     private record Charge(BigDecimal amount, String name) {
@@ -294,8 +322,8 @@ public class TransactionService {
         lines.add(PostingLine.toLedgerAccount(drawer.ledgerAccountId(), EntryDirection.CREDIT, amount, narration));
         addCharge(lines, account, terms, charge);
         return post(new Movement(TransactionType.CASH_WITHDRAWAL, account, null, drawer.branchId(), drawer.drawerId(),
-                amount, charge.amount(), account.currency(), narration, request.externalReference(), idempotencyKey),
-                lines, approval);
+                amount, charge.amount(), account.currency(), narration, request.externalReference(), idempotencyKey,
+                TransactionChannel.BRANCH), lines, approval);
     }
 
     private MovementResponse transferBetween(TransferRequest request, String idempotencyKey,
@@ -339,7 +367,8 @@ public class TransactionService {
                 lineNarration(narration + " from " + from.accountNumber())));
         addCharge(lines, from, fromTerms, charge);
         return post(new Movement(TransactionType.TRANSFER, from, to, from.branchId(), null, amount, charge.amount(),
-                from.currency(), narration, request.externalReference(), idempotencyKey), lines, approval);
+                from.currency(), narration, request.externalReference(), idempotencyKey, TransactionChannel.BRANCH),
+                lines, approval);
     }
 
     private Result<MovementResponse> idempotent(TransactionType type, String key, Object request,
@@ -366,7 +395,7 @@ public class TransactionService {
                 : postingEngine.postApproved(posting, approval.requestedBy());
         UUID initiatedBy = approval == null ? CurrentActor.currentActorId().orElse(null) : approval.requestedBy();
         FinancialTransaction transaction = transactions.saveAndFlush(new FinancialTransaction(transactionId,
-                tenantId, reference, movement.type(), TransactionChannel.BRANCH, movement.currency(),
+                tenantId, reference, movement.type(), movement.channel(), movement.currency(),
                 movement.amount(), movement.fee(), idOf(movement.debit()), idOf(movement.credit()),
                 movement.branchId(), movement.drawerId(), journal.id(), journal.businessDate(), journal.businessDate(),
                 movement.narration(), blankToNull(movement.externalReference()), movement.idempotencyKey(),
