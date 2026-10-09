@@ -4,6 +4,7 @@ import com.company.banking.common.security.Permissions;
 import com.company.banking.iam.controller.AuthController;
 import com.company.banking.iam.controller.PlatformAuthController;
 import com.company.banking.iam.service.DefaultRoleCatalog;
+import com.company.banking.operations.controller.BusinessDateController;
 import com.company.banking.staff.controller.MeController;
 import com.company.banking.support.IntegrationTest;
 import com.company.banking.tenant.controller.PublicInstitutionController;
@@ -38,7 +39,7 @@ class PermissionCatalogIT extends IntegrationTest {
      */
     private static final Set<Class<?>> UNRESTRICTED_CONTROLLERS = Set.of(
             AuthController.class, PlatformAuthController.class, PublicInstitutionController.class,
-            MeController.class);
+            MeController.class, BusinessDateController.class);
 
     private static final Pattern AUTHORITY = Pattern.compile("has(?:Any)?Authority\\(([^)]*)\\)");
     private static final Pattern QUOTED = Pattern.compile("'([^']+)'");
