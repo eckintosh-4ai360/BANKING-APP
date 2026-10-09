@@ -17,7 +17,9 @@ public enum TransactionErrorCode implements ErrorCode {
             "The deposit would take the account over the maximum balance of its product."),
     SAME_ACCOUNT_TRANSFER(HttpStatus.UNPROCESSABLE_CONTENT, "A transfer needs two different accounts."),
     CURRENCY_MISMATCH(HttpStatus.UNPROCESSABLE_CONTENT, "Both accounts of a transfer must use the same currency."),
-    TRANSACTION_ALREADY_REVERSED(HttpStatus.UNPROCESSABLE_CONTENT, "The transaction has already been reversed.");
+    TRANSACTION_ALREADY_REVERSED(HttpStatus.UNPROCESSABLE_CONTENT, "The transaction has already been reversed."),
+    REVERSAL_NOT_SUPPORTED(HttpStatus.UNPROCESSABLE_CONTENT,
+            "Loan disbursements and repayments are corrected through the loan, not reversed here.");
 
     private final HttpStatus status;
     private final String defaultMessage;

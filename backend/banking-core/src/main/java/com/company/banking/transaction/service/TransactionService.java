@@ -42,6 +42,7 @@ import com.company.banking.teller.service.TellerSessionService;
 import com.company.banking.transaction.dto.CashDepositRequest;
 import com.company.banking.transaction.dto.CashWithdrawalRequest;
 import com.company.banking.transaction.dto.FieldCollectionCommand;
+import com.company.banking.transaction.dto.LoanMovementCommand;
 import com.company.banking.transaction.dto.MovementResponse;
 import com.company.banking.transaction.dto.MovementResponse.BalanceAfter;
 import com.company.banking.transaction.dto.ReverseTransactionRequest;
@@ -174,6 +175,71 @@ public class TransactionService {
                 TransactionChannel.FIELD), lines, null);
     }
 
+    /**
+     * Posts a loan disbursement or repayment. The loan module builds the loan's side of the journal; the customer's
+     * side is added here with the same checks as any movement: a disbursement credits the borrower's account (which
+     * must accept money, within its maximum balance) and takes the processing fee from it; a repayment debits the
+     * borrower's account (which must pay out and keep its minimum balance) or takes cash into the caller's open till.
+     * Runs inside the loan module's transaction, which handles idempotency.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public MovementResponse postLoanMovement(LoanMovementCommand command) {
+        BigDecimal amount = validAmount(command.amount(), command.currency());
+        String narration = narration(command.narration(),
+                command.type() == TransactionType.LOAN_DISBURSEMENT ? "Loan disbursement" : "Loan repayment");
+        List<PostingLine> lines = new ArrayList<>(command.loanLines());
+        if (command.type() == TransactionType.LOAN_DISBURSEMENT) {
+            PostingAccount account = accountService.lockForPosting(List.of(command.accountId()))
+                    .get(command.accountId());
+            requireCustomerSide(account, command.currency(), account.creditAllowed(),
+                    TransactionErrorCode.ACCOUNT_NOT_CREDITABLE);
+            BigDecimal fee = command.fee() == null ? BigDecimal.ZERO : command.fee();
+            requireBelowMaximum(account, productService.terms(account.productVersionId()), amount.subtract(fee));
+            lines.add(PostingLine.toLedgerAccount(account.ledgerAccountId(), EntryDirection.CREDIT, amount, narration));
+            if (fee.signum() > 0) {
+                lines.add(PostingLine.toLedgerAccount(account.ledgerAccountId(), EntryDirection.DEBIT, fee,
+                        "Loan processing fee"));
+                lines.add(PostingLine.toGl(command.feeGlId(), account.branchId(), command.currency(),
+                        EntryDirection.CREDIT, fee, "Loan processing fee"));
+            }
+            return post(new Movement(TransactionType.LOAN_DISBURSEMENT, null, account, command.branchId(), null,
+                    amount, fee, command.currency(), narration, command.externalReference(), command.idempotencyKey(),
+                    TransactionChannel.BRANCH), lines, null);
+        }
+        if (command.type() != TransactionType.LOAN_REPAYMENT) {
+            throw new IllegalArgumentException("Not a loan movement: " + command.type());
+        }
+        if (command.accountId() == null) {
+            CashDrawerRef drawer = tellerSessions.drawerForCash(CurrentActor.require().id());
+            if (!drawer.currency().equals(command.currency())) {
+                throw new BankingException(TransactionErrorCode.CURRENCY_MISMATCH);
+            }
+            lines.add(PostingLine.toLedgerAccount(drawer.ledgerAccountId(), EntryDirection.DEBIT, amount, narration));
+            return post(new Movement(TransactionType.LOAN_REPAYMENT, null, null, drawer.branchId(), drawer.drawerId(),
+                    amount, BigDecimal.ZERO, command.currency(), narration, command.externalReference(),
+                    command.idempotencyKey(), TransactionChannel.BRANCH), lines, null);
+        }
+        PostingAccount account = accountService.lockForPosting(List.of(command.accountId())).get(command.accountId());
+        requireCustomerSide(account, command.currency(), account.debitAllowed(),
+                TransactionErrorCode.ACCOUNT_NOT_DEBITABLE);
+        requireMinimumBalanceKept(account, productService.terms(account.productVersionId()), amount);
+        requireFunds(account, amount);
+        lines.add(PostingLine.toLedgerAccount(account.ledgerAccountId(), EntryDirection.DEBIT, amount, narration));
+        return post(new Movement(TransactionType.LOAN_REPAYMENT, account, null, command.branchId(), null, amount,
+                BigDecimal.ZERO, command.currency(), narration, command.externalReference(), command.idempotencyKey(),
+                TransactionChannel.BRANCH), lines, null);
+    }
+
+    private static void requireCustomerSide(PostingAccount account, String currency, boolean allowed,
+                                            TransactionErrorCode refusal) {
+        if (!allowed) {
+            throw new BankingException(refusal);
+        }
+        if (!account.currency().equals(currency)) {
+            throw new BankingException(TransactionErrorCode.CURRENCY_MISMATCH);
+        }
+    }
+
     @Transactional
     public Result<MovementResponse> withdraw(String idempotencyKey, CashWithdrawalRequest request) {
         return idempotent(TransactionType.CASH_WITHDRAWAL, idempotencyKey, request,
@@ -195,6 +261,7 @@ public class TransactionService {
         if (transaction.getStatus() != TransactionStatus.POSTED) {
             throw new BankingException(TransactionErrorCode.TRANSACTION_ALREADY_REVERSED);
         }
+        requireReversible(transaction);
         return approvalService.submit(new ApprovalSubmission(ApprovalType.TRANSACTION_REVERSAL,
                 transaction.getBranchId(), transaction.getAmount(), transaction.getCurrency(), RESOURCE,
                 transaction.getId(), "Reverse " + transaction.getTransactionType() + " " + transaction.getReference()
@@ -233,6 +300,7 @@ public class TransactionService {
         if (transaction.getStatus() != TransactionStatus.POSTED) {
             throw new BankingException(TransactionErrorCode.TRANSACTION_ALREADY_REVERSED);
         }
+        requireReversible(transaction);
         if (transaction.getCashDrawerId() != null) {
             // Reversing cash changes what the drawer should hold, so someone must be working it to hand cash over.
             tellerSessions.requireOpenDrawer(transaction.getCashDrawerId());
@@ -435,6 +503,17 @@ public class TransactionService {
         event.put("businessDate", journal.businessDate().toString());
         outbox.publish("FINANCIAL_TRANSACTION", transactionId, "TRANSACTION_POSTED", event);
         return MovementResponse.posted(mapper.toResponse(transaction, numbers), balances);
+    }
+
+    /**
+     * A loan's schedule records what each of its movements settled, so reversing one here would leave the loan
+     * wrong: loan movements are corrected through the loan module.
+     */
+    private static void requireReversible(FinancialTransaction transaction) {
+        if (transaction.getTransactionType() == TransactionType.LOAN_DISBURSEMENT
+                || transaction.getTransactionType() == TransactionType.LOAN_REPAYMENT) {
+            throw new BankingException(TransactionErrorCode.REVERSAL_NOT_SUPPORTED);
+        }
     }
 
     private FinancialTransaction loadVisible(UUID transactionId) {
