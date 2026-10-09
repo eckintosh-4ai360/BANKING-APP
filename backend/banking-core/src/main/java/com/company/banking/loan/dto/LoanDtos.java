@@ -315,7 +315,9 @@ public final class LoanDtos {
                        LocalDate maturityDate, String status, int daysPastDue, String delinquencyBand,
                        boolean nonAccrual, BigDecimal principalOutstanding, BigDecimal interestReceivable,
                        BigDecimal penaltyReceivable, BigDecimal arrears, LocalDate nextDueDate,
-                       BigDecimal nextDueAmount, BigDecimal provisionHeld, LocalDate closedOn, Long version) {
+                       BigDecimal nextDueAmount, BigDecimal provisionHeld, int scheduleVersion, String bandFloor,
+                       LocalDate bandFloorUntil, BigDecimal writtenOff, BigDecimal recovered, LocalDate closedOn,
+                       Long version) {
     }
 
     public record Repayment(UUID id, UUID transactionId, String source, BigDecimal amount, BigDecimal penalty,
@@ -331,12 +333,73 @@ public final class LoanDtos {
                          BigDecimal total, BigDecimal interestWaived) {
     }
 
-    public record LoanDetail(Loan loan, List<Installment> schedule, List<Repayment> repayments, Payoff payoff) {
+    public record LoanDetail(Loan loan, List<Installment> schedule, List<Repayment> repayments, Payoff payoff,
+                             List<RestructureRecord> restructures, List<Recovery> recoveries) {
     }
 
     /**
      * @param settled the repayment paid the loan off and closed it
      */
     public record RepaymentReceipt(Repayment repayment, Loan loan, boolean settled) {
+    }
+
+    // ------------------------------------------------------------------------------- restructure, write-off
+
+    /**
+     * Reschedules the principal still owed over new installments at the loan's rate, from today. Interest and
+     * penalties already owed are carried into the first installment.
+     *
+     * @param firstDueDate null for one repayment period from today
+     * @param holdBandDays how long the loan keeps its current delinquency band whatever its new days past due
+     */
+    public record Restructure(
+            @NotNull @Min(1) @Max(520) Integer installments,
+            LocalDate firstDueDate,
+            @NotNull @Min(0) @Max(730) Integer holdBandDays,
+            @NotBlank @Size(max = 300) String reason) {
+    }
+
+    public record WriteOff(@NotBlank @Size(max = 300) String reason) {
+    }
+
+    public record RestructureRecord(UUID id, int fromVersion, int toVersion, BigDecimal principal,
+                                    BigDecimal interestCarried, BigDecimal penaltyCarried, int installments,
+                                    LocalDate firstDueDate, String bandAtRestructure, int holdBandDays, String reason,
+                                    UUID requestedBy, UUID approvedBy, LocalDate businessDate) {
+    }
+
+    public record Recovery(UUID id, UUID transactionId, String source, BigDecimal amount, LocalDate businessDate,
+                           UUID receivedBy, Instant createdAt) {
+    }
+
+    public record RecoveryReceipt(Recovery recovery, Loan loan) {
+    }
+
+    // ----------------------------------------------------------------------------------------------- collections
+
+    /**
+     * A collection call, visit, message or promise to pay (a promise has an amount and a date within 90 days).
+     */
+    public record NewActivity(
+            @NotBlank @Pattern(regexp = "^(CALL|VISIT|SMS|LETTER|PROMISE|OTHER)$") String type,
+            @NotBlank @Size(max = 1000) String note,
+            @DecimalMin(value = "0", inclusive = false) @Digits(integer = 15, fraction = 4) BigDecimal promisedAmount,
+            LocalDate promisedDate) {
+    }
+
+    /**
+     * @param promiseStatus OPEN, KEPT or BROKEN for a promise to pay
+     */
+    public record CollectionActivity(UUID id, String type, String note, int daysPastDue, BigDecimal promisedAmount,
+                                     LocalDate promisedDate, String promiseStatus, LocalDate businessDate,
+                                     UUID createdBy, Instant createdAt) {
+    }
+
+    /**
+     * @param overdue what is owed on installments already past their due date
+     */
+    public record ArrearsItem(UUID loanId, String loanNumber, UUID customerId, String customerName,
+                              String customerPhone, UUID branchId, String currency, int daysPastDue,
+                              String delinquencyBand, BigDecimal overdue, CollectionActivity lastActivity) {
     }
 }

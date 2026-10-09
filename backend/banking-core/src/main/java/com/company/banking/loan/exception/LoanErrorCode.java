@@ -33,7 +33,10 @@ public enum LoanErrorCode implements ErrorCode {
     SETTLE_WITH_PAYOFF(HttpStatus.UNPROCESSABLE_CONTENT,
             "The amount would repay all principal; pay the payoff amount to settle the loan instead."),
     INVALID_BANDS(HttpStatus.UNPROCESSABLE_CONTENT,
-            "Provision rates must not fall, and accrual must stay suspended, as days past due grow.");
+            "Provision rates must not fall, and accrual must stay suspended, as days past due grow."),
+    LOAN_NOT_WRITTEN_OFF(HttpStatus.UNPROCESSABLE_CONTENT, "Only a written-off loan takes recoveries."),
+    OVER_RECOVERY(HttpStatus.UNPROCESSABLE_CONTENT,
+            "The amount is more than what was written off and not yet recovered.");
 
     private final HttpStatus status;
     private final String defaultMessage;
