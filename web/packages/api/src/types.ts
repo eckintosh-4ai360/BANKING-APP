@@ -725,3 +725,179 @@ export interface AccountStatement {
   generatedAt: IsoDateTime;
   lines: StatementLine[];
 }
+
+// ---------------------------------------------------------------------------------------------- branch operations
+
+export interface BusinessDate {
+  businessDate: IsoDate;
+  previousBusinessDate: IsoDate | null;
+  /** Where end-of-day will move the business date. */
+  nextBusinessDate: IsoDate;
+  workingDays: string[];
+  calendarVersion: number | null;
+}
+
+export interface Holiday {
+  date: IsoDate;
+  name: string;
+  createdAt: IsoDateTime;
+  createdBy: Uuid | null;
+}
+
+export type EodRunStatus = 'RUNNING' | 'FAILED' | 'COMPLETED';
+export type EodStepStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED';
+
+export interface EodStep {
+  code: string;
+  order: number;
+  status: EodStepStatus;
+  result: Record<string, unknown> | null;
+  attempts: number;
+  startedAt: IsoDateTime | null;
+  finishedAt: IsoDateTime | null;
+  error: string | null;
+}
+
+export interface EodRun {
+  id: Uuid;
+  /** The business date the run closes. */
+  businessDate: IsoDate;
+  nextBusinessDate: IsoDate;
+  status: EodRunStatus;
+  startedAt: IsoDateTime;
+  startedBy: Uuid | null;
+  finishedAt: IsoDateTime | null;
+  failedStep: string | null;
+  failureMessage: string | null;
+  attempts: number;
+  steps: EodStep[];
+}
+
+export interface Vault {
+  id: Uuid;
+  branchId: Uuid;
+  currency: string;
+  name: string;
+  status: 'ACTIVE' | 'CLOSED';
+  /** Cash held, from the ledger. */
+  balance: Amount;
+  version: number;
+}
+
+export interface Drawer {
+  id: Uuid;
+  branchId: Uuid;
+  currency: string;
+  code: string;
+  name: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'CLOSED';
+  /** Cash the drawer should hold, from the ledger. */
+  balance: Amount;
+  /** The open or balancing session on the drawer, if any. */
+  sessionId: Uuid | null;
+  tellerId: Uuid | null;
+  version: number;
+}
+
+export type TellerSessionStatus = 'OPEN' | 'BALANCING' | 'CLOSED' | 'CLOSED_WITH_DIFFERENCE';
+
+export interface TellerSession {
+  id: Uuid;
+  drawerId: Uuid;
+  drawerCode: string;
+  branchId: Uuid;
+  tellerId: Uuid;
+  businessDate: IsoDate;
+  status: TellerSessionStatus;
+  currency: string;
+  openingBalance: Amount;
+  /** The drawer's ledger balance now: the cash the teller should hold. */
+  currentBalance: Amount;
+  expectedClosingBalance: Amount | null;
+  countedBalance: Amount | null;
+  /** Counted minus expected; negative is a shortage. */
+  difference: Amount | null;
+  openedAt: IsoDateTime;
+  closedAt: IsoDateTime | null;
+  supervisorId: Uuid | null;
+  closeNote: string | null;
+  version: number;
+}
+
+/** Cash counted note by note: denomination (decimal string, e.g. "200" or "0.50") to number of pieces. */
+export interface CashCount {
+  denominations: Record<string, number>;
+}
+
+export type CashMovementType = 'VAULT_TO_DRAWER' | 'DRAWER_TO_VAULT' | 'VAULT_TO_VAULT' | 'BANK_TO_VAULT' | 'VAULT_TO_BANK';
+export type CashMovementStatus = 'REQUESTED' | 'IN_TRANSIT' | 'COMPLETED' | 'REJECTED' | 'CANCELLED';
+
+export interface CashMovement {
+  id: Uuid;
+  reference: string;
+  movementType: CashMovementType;
+  status: CashMovementStatus;
+  currency: string;
+  amount: Amount;
+  fromBranchId: Uuid | null;
+  toBranchId: Uuid | null;
+  fromVaultId: Uuid | null;
+  fromDrawerId: Uuid | null;
+  toVaultId: Uuid | null;
+  toDrawerId: Uuid | null;
+  note: string | null;
+  requestedBy: Uuid;
+  requestedAt: IsoDateTime;
+  approvedBy: Uuid | null;
+  approvedAt: IsoDateTime | null;
+  receivedBy: Uuid | null;
+  receivedAt: IsoDateTime | null;
+  rejectionReason: string | null;
+  version: number;
+}
+
+export type CashPositionStatus = 'MATCHED' | 'BREAK' | 'NOT_COUNTED';
+
+/** A vault's or drawer's cash at the end of a business date (end-of-day cash reconciliation). */
+export interface CashPosition {
+  businessDate: IsoDate;
+  cashPointId: Uuid;
+  cashPointType: 'VAULT' | 'DRAWER';
+  branchId: Uuid;
+  currency: string;
+  ledgerBalance: Amount;
+  /** Cash last counted in it (closing count of the drawer's last session); null for vaults. */
+  countedBalance: Amount | null;
+  tellerSessionId: Uuid | null;
+  countedAt: IsoDateTime | null;
+  /** Counted minus ledger; anything but zero is a break. */
+  difference: Amount | null;
+  status: CashPositionStatus;
+}
+
+export interface AuditSeal {
+  id: Uuid;
+  sequenceNo: number;
+  rangeStart: IsoDateTime;
+  rangeEnd: IsoDateTime;
+  rowCount: number;
+  merkleRoot: string;
+  previousHash: string;
+  sealHash: string;
+  keyVersion: number;
+  signature: string;
+  createdAt: IsoDateTime;
+}
+
+export type AuditSealProblemCode = 'ROWS_CHANGED' | 'SEAL_ALTERED' | 'CHAIN_BROKEN' | 'SIGNATURE_INVALID' | 'KEY_UNAVAILABLE';
+
+export interface AuditVerificationReport {
+  from: IsoDateTime;
+  to: IsoDateTime;
+  sealsChecked: number;
+  rowsChecked: number;
+  /** End of the trail's last seal; rows after it are not sealed yet. */
+  sealedThrough: IsoDateTime | null;
+  intact: boolean;
+  problems: { sequenceNo: number; rangeStart: IsoDateTime; rangeEnd: IsoDateTime; code: AuditSealProblemCode; detail: string }[];
+}
