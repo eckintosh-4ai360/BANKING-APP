@@ -10,6 +10,7 @@
 | [architecture/05-phase1-blueprint.md](architecture/05-phase1-blueprint.md) | Phase 1 technical blueprint: migrations, API, error codes, config, tests |
 | [architecture/06-phase2-blueprint.md](architecture/06-phase2-blueprint.md) | Phase 2 banking core: ledger invariants, products, accounts, money movement, maker-checker, statements |
 | [architecture/07-phase3-blueprint.md](architecture/07-phase3-blueprint.md) | Phase 3 branch operations: business date, end-of-day, tellers and cash, deposit interest, dormancy, audit seals |
+| [architecture/08-phase4-blueprint.md](architecture/08-phase4-blueprint.md) | Phase 4 microfinance: field officers and their cash, offline collections, sequence gaps, remittance, susu, the field app's encrypted queue |
 | [security/authentication.md](security/authentication.md) | Identities, tokens, sessions, lockout, password policy |
 | [security/roles-and-permissions.md](security/roles-and-permissions.md) | Permission catalog, default roles, anti-escalation rules |
 | [security/data-protection.md](security/data-protection.md) | Data classification, field encryption, blind indexes, masking, documents, logging rules |
