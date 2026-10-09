@@ -49,6 +49,7 @@ class AccountStatementIT extends LedgerIntegrationTest {
         accountNumber = account.get("accountNumber").asString();
         String other = fixtures.openAccount(manager.token(), customer,
                 fixtures.publishedProduct(tenant, "CURR01", "CURRENT", terms("0"))).get("id").asString();
+        fixtures.openTill(manager, teller, tenant.headOfficeId(), "GHS");
 
         post("/api/v1/transactions/deposits", Map.of("accountId", accountId, "amount", "500.00"));
         post("/api/v1/transactions/withdrawals", Map.of("accountId", accountId, "amount", "100.00",

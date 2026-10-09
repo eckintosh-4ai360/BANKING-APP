@@ -169,6 +169,19 @@ public final class Fixtures {
     }
 
     /**
+     * Gives {@code teller} an open session on a new drawer at {@code branchId}, created by {@code cashManager}. The
+     * drawer starts empty: deposits fill it, withdrawals pay out of it.
+     *
+     * @return the session
+     */
+    public JsonNode openTill(StaffHandle cashManager, StaffHandle teller, UUID branchId, String currency) {
+        String code = "T" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase();
+        String drawerId = api.post("/api/v1/cash/drawers", cashManager.token(), Map.of("branchId", branchId.toString(),
+                "currency", currency, "code", code, "name", "Till " + code)).expect(201).data().get("id").asString();
+        return api.post("/api/v1/teller/sessions", teller.token(), Map.of("drawerId", drawerId)).expect(201).data();
+    }
+
+    /**
      * A single-holder account at the customer's home branch.
      */
     public JsonNode openAccount(String token, UUID customerId, String productId) {

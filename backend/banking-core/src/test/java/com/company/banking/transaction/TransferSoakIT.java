@@ -8,7 +8,6 @@ import com.company.banking.ledger.LedgerIntegrationTest;
 import com.company.banking.ledger.dto.ReconciliationReport;
 import com.company.banking.support.Fixtures.StaffHandle;
 import com.company.banking.support.Fixtures.TenantHandle;
-import com.company.banking.transaction.dto.CashDepositRequest;
 import com.company.banking.transaction.dto.TransferRequest;
 import com.company.banking.transaction.service.TransactionService;
 import java.math.BigDecimal;
@@ -56,8 +55,11 @@ class TransferSoakIT extends LedgerIntegrationTest {
                     .asString()));
         }
         for (UUID account : accounts) {
-            inTenant(tenant.id(), () -> transactionService.deposit(UUID.randomUUID().toString(),
-                    new CashDepositRequest(account, null, FUNDING, "Funding", null)));
+            // Funded straight through the ledger: the soak is about transfers, not tellers.
+            UUID ledgerAccount = inTenant(tenant.id(), () -> jdbcClient.sql(
+                            "SELECT ledger_account_id FROM core.account WHERE id = :id")
+                    .param("id", account).query(UUID.class).single());
+            deposit(tenant.id(), ledgerAccount, tenant.headOfficeId(), "GHS", FUNDING.toPlainString());
         }
 
         Random random = new Random(20261008L);

@@ -4,7 +4,6 @@ import static com.company.banking.support.ProductRequests.terms;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.company.banking.common.error.BankingException;
 import com.company.banking.ledger.LedgerIntegrationTest;
 import com.company.banking.ledger.dto.PostingLine;
 import com.company.banking.ledger.dto.PostingRequest;
@@ -17,7 +16,6 @@ import com.company.banking.ledger.model.SystemAccount;
 import com.company.banking.support.Api;
 import com.company.banking.support.Fixtures.StaffHandle;
 import com.company.banking.support.Fixtures.TenantHandle;
-import com.company.banking.transaction.dto.CashWithdrawalRequest;
 import com.company.banking.transaction.dto.TransferRequest;
 import com.company.banking.transaction.service.TransactionService;
 import java.math.BigDecimal;
@@ -68,6 +66,7 @@ class TransactionApiIT extends LedgerIntegrationTest {
         teller = fixtures.createStaff(tenant, "teller", tenant.headOfficeId(), false, "TELLER");
         customer = fixtures.verifiedIndividual(officer, manager, tenant.headOfficeId(), "Ama");
         current = fixtures.publishedProduct(tenant, "CURR01", "CURRENT", terms("0"));
+        fixtures.openTill(manager, teller, tenant.headOfficeId(), "GHS");
     }
 
     @Test
@@ -146,14 +145,13 @@ class TransactionApiIT extends LedgerIntegrationTest {
         for (int i = 0; i < attempts; i++) {
             Callable<Boolean> withdrawal = () -> {
                 start.await();
-                try {
-                    inTenant(tenant.id(), () -> transactionService.withdraw(key(), new CashWithdrawalRequest(
-                            UUID.fromString(accountId), null, money("10.00"), null, null)));
+                Api.Response response = api.postIdempotent(WITHDRAWALS, teller.token(), key(), Map.of(
+                        "accountId", accountId, "amount", "10.00"));
+                if (response.status() == 201) {
                     return true;
-                } catch (BankingException refused) {
-                    assertThat(refused.getErrorCode().code()).isEqualTo("INSUFFICIENT_FUNDS");
-                    return false;
                 }
+                assertThat(response.errorCode()).isEqualTo("INSUFFICIENT_FUNDS");
+                return false;
             };
             results.add(pool.submit(withdrawal));
         }
@@ -327,16 +325,20 @@ class TransactionApiIT extends LedgerIntegrationTest {
     }
 
     @Test
-    void cashMovesThroughBranchesInScopeAndBranchesBalanceEachOther() {
+    void cashGoesThroughTheTellersDrawerAndBranchesBalanceEachOther() {
         UUID kumasi = fixtures.createBranch(tenant, "KUM");
         StaffHandle cashier = fixtures.createStaff(tenant, "cashier", kumasi, true, "TELLER");
+        StaffHandle kumasiManager = fixtures.createStaff(tenant, "kumasi.manager", kumasi, false, "BRANCH_MANAGER");
         String accountId = fixtures.openAccount(manager.token(), customer, current).get("id").asString();
 
-        api.postIdempotent(DEPOSITS, teller.token(), key(), Map.of("accountId", accountId, "branchId",
-                kumasi.toString(), "amount", "10.00")).expectError(404, "RESOURCE_NOT_FOUND");
+        api.postIdempotent(DEPOSITS, cashier.token(), key(), Map.of("accountId", accountId, "amount", "10.00"))
+                .expectError(422, "TELLER_SESSION_REQUIRED");
+        fixtures.openTill(kumasiManager, cashier, kumasi, "GHS");
         JsonNode deposited = api.postIdempotent(DEPOSITS, cashier.token(), key(), Map.of("accountId", accountId,
-                "branchId", kumasi.toString(), "amount", "60.00")).expect(201).data();
-        assertThat(deposited.at("/transaction/branchId").asString()).isEqualTo(kumasi.toString());
+                "amount", "60.00")).expect(201).data();
+        assertThat(deposited.at("/transaction/branchId").asString()).as("the drawer's branch")
+                .isEqualTo(kumasi.toString());
+        withdraw(accountId, "50.00").expectError(422, "CASH_INSUFFICIENT");
 
         UUID journalId = UUID.fromString(deposited.at("/transaction/journalEntryId").asString());
         assertThat(inTenant(tenant.id(), () -> ledgerQueries.journal(journalId)).lines())

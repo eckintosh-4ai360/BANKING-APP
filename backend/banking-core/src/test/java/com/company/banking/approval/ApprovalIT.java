@@ -52,6 +52,7 @@ class ApprovalIT extends LedgerIntegrationTest {
         teller = fixtures.createStaff(tenant, "teller", tenant.headOfficeId(), false, "TELLER");
         customer = fixtures.verifiedIndividual(officer, manager, tenant.headOfficeId(), "Ama");
         current = fixtures.publishedProduct(tenant, "CURR01", "CURRENT", terms("0"));
+        fixtures.openTill(manager, teller, tenant.headOfficeId(), "GHS");
     }
 
     @Test
