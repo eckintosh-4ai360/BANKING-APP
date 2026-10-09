@@ -2,6 +2,7 @@ package com.company.banking.audit.repository;
 
 import com.company.banking.audit.dto.AuditLogSearchCriteria;
 import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.SqlParameterValue;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -9,11 +10,14 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /**
  * Append-only access to {@code core.audit_log} via JDBC (the table is insert-only, so no ORM state is needed).
@@ -105,6 +109,35 @@ public class AuditLogRepository {
                 .params(query.params)
                 .query(Long.class)
                 .single();
+    }
+
+    /**
+     * The rows of one trail in {@code [from, to)}, in {@code (occurred_at, id)} order, one at a time (for sealing).
+     *
+     * @param tenantId the institution, or {@code null} for platform-level events
+     */
+    public void forEachInRange(UUID tenantId, Instant from, Instant to, Consumer<AuditLogRow> action) {
+        jdbcClient.sql("SELECT " + COLUMNS + " FROM core.audit_log WHERE " + scope(tenantId)
+                        + " AND occurred_at >= :from AND occurred_at < :to ORDER BY occurred_at, id")
+                .param("tenantId", uuid(tenantId))
+                .param("from", Timestamp.from(from))
+                .param("to", Timestamp.from(to))
+                .query((RowCallbackHandler) rs -> action.accept(ROW_MAPPER.mapRow(rs, rs.getRow())));
+    }
+
+    /**
+     * When the trail's first row was written, if it has any.
+     */
+    public Optional<Instant> earliest(UUID tenantId) {
+        return jdbcClient.sql("SELECT min(occurred_at) FROM core.audit_log WHERE " + scope(tenantId))
+                .param("tenantId", uuid(tenantId))
+                .query((rs, rowNum) -> Optional.ofNullable(rs.getTimestamp(1)).map(Timestamp::toInstant))
+                .single();
+    }
+
+    /** Matches one trail with a predicate the {@code (tenant_id, occurred_at)} index can serve. */
+    private static String scope(UUID tenantId) {
+        return tenantId == null ? "tenant_id IS NULL" : "tenant_id = :tenantId";
     }
 
     private static Query where(UUID tenantId, AuditLogSearchCriteria criteria) {
