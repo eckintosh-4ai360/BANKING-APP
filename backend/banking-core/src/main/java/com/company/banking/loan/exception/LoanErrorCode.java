@@ -31,7 +31,9 @@ public enum LoanErrorCode implements ErrorCode {
     LOAN_NOT_ACTIVE(HttpStatus.UNPROCESSABLE_CONTENT, "The loan is not active."),
     OVERPAYMENT(HttpStatus.UNPROCESSABLE_CONTENT, "The amount is more than the loan's payoff amount."),
     SETTLE_WITH_PAYOFF(HttpStatus.UNPROCESSABLE_CONTENT,
-            "The amount would repay all principal; pay the payoff amount to settle the loan instead.");
+            "The amount would repay all principal; pay the payoff amount to settle the loan instead."),
+    INVALID_BANDS(HttpStatus.UNPROCESSABLE_CONTENT,
+            "Provision rates must not fall, and accrual must stay suspended, as days past due grow.");
 
     private final HttpStatus status;
     private final String defaultMessage;
