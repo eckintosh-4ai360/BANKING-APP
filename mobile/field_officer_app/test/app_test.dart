@@ -5,6 +5,8 @@ import 'package:banking_core/testing.dart';
 import 'package:field_officer_app/src/app/field_officer_app.dart';
 import 'package:field_officer_app/src/app/providers.dart';
 import 'package:field_officer_app/src/app/router.dart';
+import 'package:field_officer_app/src/offline/database_opener.dart';
+import 'package:field_officer_app/src/offline/field_database.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,11 +17,15 @@ void main() {
 
   late FakeBackend server;
   late MemoryKeyValueStore storage;
+  late FieldDatabase database;
 
   setUp(() {
     server = FakeBackend();
     storage = MemoryKeyValueStore();
+    database = FieldDatabaseOpener.openInMemory();
   });
+
+  tearDown(() => database.close());
 
   Future<BankingBackend> startApp(WidgetTester tester) async {
     final backend = await BankingBackend.create(
@@ -35,7 +41,11 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         retry: (_, _) => null,
-        overrides: [backendProvider.overrideWithValue(backend)],
+        overrides: [
+          backendProvider.overrideWithValue(backend),
+          fieldDatabaseProvider.overrideWithValue(database),
+          deviceKeyProvider.overrideWithValue('phone-test-0001'),
+        ],
         child: const FieldOfficerApp(),
       ),
     );
@@ -77,7 +87,8 @@ void main() {
     expect(find.text('Hello, Kofi'), findsOneWidget);
     expect(find.text('Demo MFI'), findsOneWidget);
     expect(find.text('Field officer'), findsOneWidget);
-    expect(find.text('Coming in a later release'), findsNWidgets(4));
+    expect(find.text('Everything is synced'), findsOneWidget);
+    expect(find.text('Sync once to load the customers assigned to you.'), findsOneWidget);
     expect(server.calls('POST', '/api/v1/auth/staff/login').single.data, {
       'tenantCode': 'demo-mfi',
       'username': 'fieldofficer',
