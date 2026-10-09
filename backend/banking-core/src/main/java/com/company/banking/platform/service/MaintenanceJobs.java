@@ -1,6 +1,7 @@
 package com.company.banking.platform.service;
 
 import com.company.banking.account.service.AccountHoldService;
+import com.company.banking.audit.service.AuditSealService;
 import com.company.banking.common.idempotency.IdempotencyService;
 import com.company.banking.common.outbox.OutboxService;
 import com.company.banking.common.persistence.ClusterLock;
@@ -37,6 +38,7 @@ public class MaintenanceJobs {
     private final OutboxService outboxService;
     private final IdempotencyService idempotencyService;
     private final AccountHoldService holdService;
+    private final AuditSealService auditSealService;
     private final ClusterLock clusterLock;
 
     @Scheduled(fixedDelayString = "${banking.outbox.relay-interval:PT5S}")
@@ -55,6 +57,21 @@ public class MaintenanceJobs {
     public void expireHolds() {
         clusterLock.runExclusively("job:hold-expiry", () -> forEachTenant("hold expiry",
                 tenant -> holdService.expireDue(HOLD_BATCH)));
+    }
+
+    /**
+     * Seals each institution's audit trail and the platform's own, period by period.
+     */
+    @Scheduled(fixedDelayString = "${banking.audit.seal.interval:PT10M}")
+    public void sealAuditTrails() {
+        clusterLock.runExclusively("job:audit-seal", () -> {
+            forEachTenant("audit seal", tenant -> auditSealService.sealDue());
+            try {
+                auditSealService.sealDue(); // no institution bound: the platform trail
+            } catch (RuntimeException failure) {
+                log.error("audit seal failed for the platform trail: {}", failure.getClass().getSimpleName());
+            }
+        });
     }
 
     private void forEachTenant(String job, Consumer<TenantSummary> work) {
