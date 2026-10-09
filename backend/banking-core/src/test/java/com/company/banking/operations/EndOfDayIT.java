@@ -132,6 +132,9 @@ class EndOfDayIT extends LedgerIntegrationTest {
         Map<String, List<BigDecimal>> expected = snapshot(reference, previousDate(reference));
         List<String> expectedInterest = interest(reference);
         String expectedCash = cash(reference);
+        String expectedSusu = susu(reference);
+        assertThat(expectedSusu).as("the one-day cycle closed and the next one opened")
+                .isEqualTo("contributions 2 EXPECTED 1 MISSED 1, commissions 1, cycle 2");
         assertThat(expectedCash).isEqualTo("DRAWER NOT_COUNTED 1, VAULT NOT_COUNTED 1");
         assertThat(expectedInterest.get(0)).as("three accounts accrue three days").startsWith("accruals 9 ")
                 .endsWith(" unposted 0");
@@ -140,7 +143,8 @@ class EndOfDayIT extends LedgerIntegrationTest {
 
         String[][] checkpoints = {
                 {"DEPOSIT_INTEREST_ACCRUAL", "batch"}, {"DEPOSIT_INTEREST_ACCRUAL", "journal"},
-                {"DEPOSIT_INTEREST_PAYOUT", "batch"}, {"DORMANCY", "batch"}, {"CASH_RECONCILIATION", "written"},
+                {"DEPOSIT_INTEREST_PAYOUT", "batch"}, {"SUSU_CONTRIBUTIONS", "batch"}, {"DORMANCY", "batch"},
+                {"CASH_RECONCILIATION", "written"},
                 {"GL_SNAPSHOT", "before"}, {"GL_SNAPSHOT", "written"}, {"LEDGER_RECONCILIATION", "before"}};
         for (String[] checkpoint : checkpoints) {
             TenantHandle tenant = scenario();
@@ -163,6 +167,8 @@ class EndOfDayIT extends LedgerIntegrationTest {
                     .isEqualTo(expectedInterest);
             assertThat(cash(tenant)).as("cash positions after resuming from %s/%s", checkpoint[0], checkpoint[1])
                     .isEqualTo(expectedCash);
+            assertThat(susu(tenant)).as("susu after resuming from %s/%s", checkpoint[0], checkpoint[1])
+                    .isEqualTo(expectedSusu);
         }
     }
 
@@ -208,6 +214,13 @@ class EndOfDayIT extends LedgerIntegrationTest {
         minimum.put("interestCalcMethod", "MIN_MONTHLY_BALANCE");
         String daily = fixtures.publishedProduct(tenant, "SAVDAY", "SAVINGS", ProductRequests.terms("0"));
         String lowest = fixtures.publishedProduct(tenant, "SAVMIN", "SAVINGS", minimum);
+        Map<String, Object> susuTerms = ProductRequests.terms("0");
+        susuTerms.put("interestRate", "0");
+        String susuAccount = fixtures.openAccount(manager.token(), customer,
+                fixtures.publishedProduct(tenant, "SUSU01", "SUSU", susuTerms)).get("id").asString();
+        api.post("/api/v1/susu/plans", manager.token(), Map.of("customerId", customer.toString(),
+                "accountId", susuAccount, "frequencyCode", "DAILY", "contributionAmount", "5.00", "cycleLength", 1,
+                "commissionContributions", 0)).expect(201);
         Map<String, String> funding = Map.of(daily, "1000.00", lowest, "777.77");
         for (String productId : List.of(daily, daily, lowest)) {
             String accountId = fixtures.openAccount(manager.token(), customer, productId).get("id").asString();
@@ -222,6 +235,20 @@ class EndOfDayIT extends LedgerIntegrationTest {
                 .param("id", UUID.fromString(accountId))
                 .query(UUID.class)
                 .single());
+    }
+
+    /** The tenant's susu contributions by status, commissions and the plan's cycle. */
+    private String susu(TenantHandle tenant) {
+        return inTenant(tenant.id(), () -> String.join(", ",
+                jdbcClient.sql("""
+                                SELECT 'contributions ' || count(*) || ' ' || string_agg(status || ' ' || n, ' '
+                                       ORDER BY status)
+                                FROM (SELECT status, count(*) AS n FROM core.susu_contribution GROUP BY status) s,
+                                     (SELECT count(*) FROM core.susu_contribution) total(count)
+                                GROUP BY total.count""").query(String.class).single(),
+                jdbcClient.sql("SELECT 'commissions ' || count(*) FROM core.susu_cycle_commission")
+                        .query(String.class).single(),
+                jdbcClient.sql("SELECT 'cycle ' || current_cycle FROM core.susu_plan").query(String.class).single()));
     }
 
     /** The tenant's cash positions: how many of each type and status. */
