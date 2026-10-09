@@ -131,6 +131,8 @@ class EndOfDayIT extends LedgerIntegrationTest {
         assertThat(previousDate(reference)).isEqualTo(MONTH_END.toString());
         Map<String, List<BigDecimal>> expected = snapshot(reference, previousDate(reference));
         List<String> expectedInterest = interest(reference);
+        String expectedCash = cash(reference);
+        assertThat(expectedCash).isEqualTo("DRAWER NOT_COUNTED 1, VAULT NOT_COUNTED 1");
         assertThat(expectedInterest.get(0)).as("three accounts accrue three days").startsWith("accruals 9 ")
                 .endsWith(" unposted 0");
         assertThat(expectedInterest.get(1)).as("and are paid at the month end").startsWith("payouts 3 ")
@@ -138,7 +140,7 @@ class EndOfDayIT extends LedgerIntegrationTest {
 
         String[][] checkpoints = {
                 {"DEPOSIT_INTEREST_ACCRUAL", "batch"}, {"DEPOSIT_INTEREST_ACCRUAL", "journal"},
-                {"DEPOSIT_INTEREST_PAYOUT", "batch"}, {"DORMANCY", "batch"},
+                {"DEPOSIT_INTEREST_PAYOUT", "batch"}, {"DORMANCY", "batch"}, {"CASH_RECONCILIATION", "written"},
                 {"GL_SNAPSHOT", "before"}, {"GL_SNAPSHOT", "written"}, {"LEDGER_RECONCILIATION", "before"}};
         for (String[] checkpoint : checkpoints) {
             TenantHandle tenant = scenario();
@@ -159,6 +161,8 @@ class EndOfDayIT extends LedgerIntegrationTest {
                     checkpoint[1]).isEqualTo(expected);
             assertThat(interest(tenant)).as("interest after resuming from %s/%s", checkpoint[0], checkpoint[1])
                     .isEqualTo(expectedInterest);
+            assertThat(cash(tenant)).as("cash positions after resuming from %s/%s", checkpoint[0], checkpoint[1])
+                    .isEqualTo(expectedCash);
         }
     }
 
@@ -196,6 +200,10 @@ class EndOfDayIT extends LedgerIntegrationTest {
         StaffHandle officer = fixtures.createStaff(tenant, "officer", tenant.headOfficeId(), false, "LOAN_OFFICER");
         StaffHandle manager = fixtures.createStaff(tenant, "manager", tenant.headOfficeId(), false, "BRANCH_MANAGER");
         UUID customer = fixtures.verifiedIndividual(officer, manager, tenant.headOfficeId(), "Esi");
+        api.post("/api/v1/cash/vaults", manager.token(), Map.of("branchId", tenant.headOfficeId().toString(),
+                "currency", "GHS", "name", "Main vault")).expect(201);
+        api.post("/api/v1/cash/drawers", manager.token(), Map.of("branchId", tenant.headOfficeId().toString(),
+                "currency", "GHS", "code", "T1", "name", "Till 1")).expect(201);
         Map<String, Object> minimum = ProductRequests.terms("0");
         minimum.put("interestCalcMethod", "MIN_MONTHLY_BALANCE");
         String daily = fixtures.publishedProduct(tenant, "SAVDAY", "SAVINGS", ProductRequests.terms("0"));
@@ -214,6 +222,14 @@ class EndOfDayIT extends LedgerIntegrationTest {
                 .param("id", UUID.fromString(accountId))
                 .query(UUID.class)
                 .single());
+    }
+
+    /** The tenant's cash positions: how many of each type and status. */
+    private String cash(TenantHandle tenant) {
+        return String.join(", ", inTenant(tenant.id(), () -> jdbcClient.sql("""
+                        SELECT cash_point_type || ' ' || status || ' ' || count(*) FROM core.cash_position
+                        GROUP BY cash_point_type, status ORDER BY cash_point_type, status""")
+                .query(String.class).list()));
     }
 
     /** Interest rows of the tenant: how many, and their totals. */

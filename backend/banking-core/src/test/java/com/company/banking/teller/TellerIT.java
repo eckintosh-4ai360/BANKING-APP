@@ -4,17 +4,22 @@ import static com.company.banking.support.ProductRequests.terms;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.company.banking.ledger.LedgerIntegrationTest;
+import com.company.banking.ledger.dto.PostingLine;
 import com.company.banking.ledger.dto.TrialBalanceRow;
+import com.company.banking.ledger.model.EntryDirection;
 import com.company.banking.ledger.model.SystemAccount;
 import com.company.banking.support.Api;
 import com.company.banking.support.Fixtures.StaffHandle;
 import com.company.banking.support.Fixtures.TenantHandle;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import tools.jackson.databind.JsonNode;
 
 /**
@@ -25,6 +30,9 @@ class TellerIT extends LedgerIntegrationTest {
 
     private static final String DEPOSITS = "/api/v1/transactions/deposits";
     private static final String WITHDRAWALS = "/api/v1/transactions/withdrawals";
+
+    @Autowired
+    private JdbcClient jdbcClient;
 
     private TenantHandle tenant;
     private StaffHandle manager;
@@ -213,7 +221,78 @@ class TellerIT extends LedgerIntegrationTest {
                 .asString()).isEqualTo("COMPLETED");
     }
 
+    @Test
+    void endOfDayReconcilesEveryDrawerAndVaultAndFlagsCashPostedAfterTheCount() {
+        api.post("/api/v1/cash/vaults", manager.token(), Map.of("branchId", tenant.headOfficeId().toString(),
+                "currency", "GHS", "name", "Main vault")).expect(201);
+        JsonNode idle = api.post("/api/v1/cash/drawers", manager.token(), Map.of("branchId",
+                tenant.headOfficeId().toString(), "currency", "GHS", "code", "IDLE", "name", "Spare till"))
+                .expect(201).data();
+
+        // Counted to the cent, then credited behind the till's back.
+        JsonNode counted = fixtures.openTill(manager, teller, tenant.headOfficeId(), "GHS");
+        cash(DEPOSITS, "300.00").expect(201);
+        assertThat(close(counted, Map.of("100", 3)).get("status").asString()).isEqualTo("CLOSED");
+        String countedDrawer = counted.get("drawerId").asString();
+        UUID drawerLedger = inTenant(tenant.id(), () -> jdbcClient.sql(
+                        "SELECT ledger_account_id FROM core.cash_drawer WHERE id = :id")
+                .param("id", UUID.fromString(countedDrawer)).query(UUID.class).single());
+        post(tenant.id(), tenant.headOfficeId(), List.of(
+                PostingLine.toLedgerAccount(drawerLedger, EntryDirection.DEBIT, money("10.00"), "Unexplained"),
+                PostingLine.toSystemAccount(SystemAccount.SUSPENSE_CREDIT, tenant.headOfficeId(), "GHS",
+                        EntryDirection.CREDIT, money("10.00"), "Unexplained")));
+
+        // Short by 5.00, accepted by a supervisor: the shortage posting brings the ledger to the count.
+        StaffHandle second = fixtures.createStaff(tenant, "teller2", tenant.headOfficeId(), false, "TELLER");
+        JsonNode shortSession = fixtures.openTill(manager, second, tenant.headOfficeId(), "GHS");
+        api.postIdempotent(DEPOSITS, second.token(), key(), Map.of("accountId", accountId, "amount", "200.00"))
+                .expect(201);
+        JsonNode balancing = api.post("/api/v1/teller/sessions/" + shortSession.get("id").asString() + "/close",
+                second.token(), Map.of("count", Map.of("denominations", Map.of("100", 1, "50", 1, "20", 2, "5", 1)),
+                        "version", shortSession.get("version").asLong())).expect(200).data();
+        api.post("/api/v1/teller/sessions/" + shortSession.get("id").asString() + "/accept-difference",
+                supervisor.token(), Map.of("note", "Short GHS 5", "version", balancing.get("version").asLong()))
+                .expect(200);
+
+        JsonNode run = api.post("/api/v1/operations/eod", tenant.adminToken(), null).expect(202).data();
+        assertThat(run.get("status").asString()).as("a cash break does not stop end-of-day").isEqualTo("COMPLETED");
+        JsonNode positions = api.get("/api/v1/cash/positions", manager.token()).expect(200).data();
+        assertThat(positions).hasSize(4);
+        assertThat(positions).allSatisfy(position -> assertThat(position.get("businessDate").asString())
+                .isEqualTo(run.get("businessDate").asString()));
+        assertThat(position(positions, countedDrawer)).isEqualTo(List.of("DRAWER", "310.00", "300.00", "-10.00",
+                "BREAK", counted.get("id").asString()));
+        assertThat(position(positions, shortSession.get("drawerId").asString())).isEqualTo(List.of("DRAWER",
+                "195.00", "195.00", "0.00", "MATCHED", shortSession.get("id").asString()));
+        assertThat(position(positions, idle.get("id").asString())).isEqualTo(List.of("DRAWER", "0.00", "null",
+                "null", "NOT_COUNTED", "null"));
+        assertThat(positions).filteredOn(position -> position.get("cashPointType").asString().equals("VAULT"))
+                .singleElement().satisfies(vault -> assertThat(vault.get("status").asString())
+                        .isEqualTo("NOT_COUNTED"));
+        assertThat(inTenant(tenant.id(), () -> jdbcClient.sql(
+                        "SELECT count(*) FROM core.audit_log WHERE action = 'CASH_RECONCILIATION_BREAK'")
+                .query(Long.class).single())).isEqualTo(1L);
+        StaffHandle lender = fixtures.createStaff(tenant, "lender", tenant.headOfficeId(), false, "LOAN_OFFICER");
+        api.get("/api/v1/cash/positions", lender.token()).expectError(403, "ACCESS_DENIED");
+    }
+
     // ---------------------------------------------------------------------------------------------------------
+
+    /** Type, ledger balance, counted balance, difference, status and session of a cash point's position. */
+    private static List<String> position(JsonNode positions, String cashPointId) {
+        for (JsonNode position : positions) {
+            if (position.get("cashPointId").asString().equals(cashPointId)) {
+                return List.of(position.get("cashPointType").asString(), text(position, "ledgerBalance"),
+                        text(position, "countedBalance"), text(position, "difference"), text(position, "status"),
+                        text(position, "tellerSessionId"));
+            }
+        }
+        throw new AssertionError("No position for " + cashPointId);
+    }
+
+    private static String text(JsonNode node, String field) {
+        return node.get(field) == null || node.get(field).isNull() ? "null" : node.get(field).asString();
+    }
 
     private Api.Response cash(String path, String amount) {
         return api.postIdempotent(path, teller.token(), key(), Map.of("accountId", accountId, "amount", amount));
