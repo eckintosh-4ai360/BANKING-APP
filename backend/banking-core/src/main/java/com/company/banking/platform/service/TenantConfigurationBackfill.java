@@ -6,6 +6,8 @@ import com.company.banking.customer.service.IdentificationTypeService;
 import com.company.banking.iam.service.RoleService;
 import com.company.banking.kyc.service.KycTierService;
 import com.company.banking.ledger.service.AccountingPeriodService;
+import com.company.banking.ledger.service.BusinessDateService;
+import com.company.banking.operations.service.BusinessCalendarService;
 import com.company.banking.ledger.service.ChartOfAccountService;
 import com.company.banking.tenant.dto.TenantSummary;
 import com.company.banking.tenant.service.TenantProvisioningService;
@@ -34,6 +36,8 @@ public class TenantConfigurationBackfill implements ApplicationRunner {
     private final KycTierService kycTierService;
     private final ChartOfAccountService chartOfAccountService;
     private final AccountingPeriodService accountingPeriodService;
+    private final BusinessDateService businessDateService;
+    private final BusinessCalendarService businessCalendarService;
     private final RoleService roleService;
 
     @Override
@@ -51,6 +55,9 @@ public class TenantConfigurationBackfill implements ApplicationRunner {
             identificationTypeService.provisionDefaults(tenant.countryCode());
             kycTierService.provisionDefaults();
             chartOfAccountService.provisionDefaults(tenant.institutionType());
+            chartOfAccountService.provisionMissingSystemAccounts(tenant.institutionType());
+            businessDateService.provision();
+            businessCalendarService.provisionDefaults();
             accountingPeriodService.provisionCurrentPeriod();
             roleService.provisionMissingDefaultRoles();
             return null;

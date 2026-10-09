@@ -14,6 +14,8 @@ import com.company.banking.customer.service.IdentificationTypeService;
 import com.company.banking.iam.service.DefaultRoleCatalog;
 import com.company.banking.kyc.service.KycTierService;
 import com.company.banking.ledger.service.AccountingPeriodService;
+import com.company.banking.ledger.service.BusinessDateService;
+import com.company.banking.operations.service.BusinessCalendarService;
 import com.company.banking.ledger.service.ChartOfAccountService;
 import com.company.banking.iam.service.RoleService;
 import com.company.banking.iam.service.SessionService;
@@ -64,6 +66,8 @@ public class PlatformTenantService {
     private final KycTierService kycTierService;
     private final ChartOfAccountService chartOfAccountService;
     private final AccountingPeriodService accountingPeriodService;
+    private final BusinessDateService businessDateService;
+    private final BusinessCalendarService businessCalendarService;
     private final AuditService auditService;
     private final TransactionTemplate transactionTemplate;
 
@@ -92,6 +96,8 @@ public class PlatformTenantService {
             identificationTypeService.provisionDefaults(request.countryCode());
             kycTierService.provisionDefaults();
             chartOfAccountService.provisionDefaults(request.institutionType());
+            businessDateService.provision();
+            businessCalendarService.provisionDefaults();
             accountingPeriodService.provisionCurrentPeriod();
             OnboardTenantRequest.Administrator admin = request.administrator();
             StaffCreatedResponse administrator = staffService.provisionAdministrator(new NewAdministrator(
