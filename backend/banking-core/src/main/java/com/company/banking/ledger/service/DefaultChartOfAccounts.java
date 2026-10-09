@@ -49,8 +49,13 @@ public final class DefaultChartOfAccounts {
         posting(chart, "1210", "Loan principal", AccountClass.ASSET, "1200", false, SystemAccount.LOAN_PRINCIPAL);
         posting(chart, "1220", "Interest receivable", AccountClass.ASSET, "1200", false,
                 SystemAccount.INTEREST_RECEIVABLE);
+        posting(chart, "1230", "Penalty receivable", AccountClass.ASSET, "1200", false,
+                SystemAccount.PENALTY_RECEIVABLE);
         chart.add(new Entry("1290", "Allowance for loan losses", AccountClass.ASSET, NormalSide.CREDIT, "1200", false,
                 false, SystemAccount.LOAN_LOSS_PROVISION));
+        // Interest on non-performing loans is held here instead of income until it is collected (spec risk F9).
+        chart.add(new Entry("1295", "Interest in suspense", AccountClass.ASSET, NormalSide.CREDIT, "1200", false,
+                false, SystemAccount.INTEREST_IN_SUSPENSE));
         header(chart, "1900", "Clearing and suspense", AccountClass.ASSET, "1000");
         posting(chart, "1910", "Inter-branch due from", AccountClass.ASSET, "1900", false,
                 SystemAccount.INTER_BRANCH_DUE_FROM);
@@ -96,6 +101,11 @@ public final class DefaultChartOfAccounts {
                 SystemAccount.ACCOUNT_FEE_INCOME);
         posting(chart, "4220", "Transaction fees", AccountClass.INCOME, "4200", false,
                 SystemAccount.TRANSACTION_FEE_INCOME);
+        posting(chart, "4230", "Loan fees", AccountClass.INCOME, "4200", false, SystemAccount.LOAN_FEE_INCOME);
+        posting(chart, "4240", "Loan penalties", AccountClass.INCOME, "4200", false,
+                SystemAccount.LOAN_PENALTY_INCOME);
+        posting(chart, "4250", "Recoveries of written-off loans", AccountClass.INCOME, "4000", false,
+                SystemAccount.LOAN_RECOVERY_INCOME);
         posting(chart, "4900", "Other income", AccountClass.INCOME, "4000", true, SystemAccount.OTHER_INCOME);
 
         // Expenses
