@@ -3,6 +3,7 @@ package com.company.banking.ledger.service;
 import com.company.banking.branch.dto.BranchResponse;
 import com.company.banking.branch.service.BranchService;
 import com.company.banking.common.error.BankingException;
+import com.company.banking.common.error.CommonErrorCode;
 import com.company.banking.common.error.ResourceNotFoundException;
 import com.company.banking.common.id.UuidV7;
 import com.company.banking.common.security.CurrentActor;
@@ -10,15 +11,20 @@ import com.company.banking.common.tenant.TenantContext;
 import com.company.banking.ledger.dto.BalanceSnapshot;
 import com.company.banking.ledger.dto.GlAccountRef;
 import com.company.banking.ledger.dto.LedgerAccountInfo;
+import com.company.banking.ledger.dto.LedgerAccountStatement;
 import com.company.banking.ledger.dto.OpenLedgerAccountCommand;
 import com.company.banking.ledger.entity.LedgerAccount;
 import com.company.banking.ledger.exception.LedgerErrorCode;
+import com.company.banking.ledger.model.EntryDirection;
 import com.company.banking.ledger.model.NormalSide;
 import com.company.banking.ledger.repository.BalanceRepository;
 import com.company.banking.ledger.repository.BalanceRepository.BalanceRow;
 import com.company.banking.ledger.repository.LedgerAccountRepository;
+import com.company.banking.ledger.repository.LedgerReportRepository;
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +46,7 @@ public class LedgerAccountService {
 
     private final LedgerAccountRepository repository;
     private final BalanceRepository balances;
+    private final LedgerReportRepository reports;
     private final ChartOfAccountService chartOfAccounts;
     private final CurrencyService currencies;
     private final BranchService branchService;
@@ -93,6 +100,51 @@ public class LedgerAccountService {
                 .findFirst()
                 .map(this::toSnapshot)
                 .orElseThrow(() -> new ResourceNotFoundException("Ledger account"));
+    }
+
+    /**
+     * The account's entries between two business dates with running balances (for statements). The caller checks
+     * that the reader may see the account.
+     *
+     * @param maxLines refuses periods with more entries than this, so a statement stays a reasonable size
+     */
+    @Transactional(readOnly = true)
+    public LedgerAccountStatement statement(UUID ledgerAccountId, LocalDate from, LocalDate to, int maxLines) {
+        UUID tenantId = TenantContext.requireTenantId();
+        LedgerAccount account = load(ledgerAccountId);
+        EntryDirection raises = account.getNormalSide().increasingDirection();
+        LedgerReportRepository.GlTotals before = reports.accountTotalsBefore(tenantId, ledgerAccountId, from);
+        BigDecimal balance = raises == EntryDirection.CREDIT ? before.credits().subtract(before.debits())
+                : before.debits().subtract(before.credits());
+        BigDecimal opening = balance;
+        List<LedgerReportRepository.StatementEntry> entries = reports.accountEntries(tenantId, ledgerAccountId, from,
+                to, maxLines + 1);
+        if (entries.size() > maxLines) {
+            throw new BankingException(CommonErrorCode.VALIDATION_FAILED,
+                    "The period has more than " + maxLines + " entries. Choose a shorter period.");
+        }
+        String currency = account.getCurrency();
+        BigDecimal debits = BigDecimal.ZERO;
+        BigDecimal credits = BigDecimal.ZERO;
+        List<LedgerAccountStatement.Line> lines = new ArrayList<>(entries.size());
+        for (LedgerReportRepository.StatementEntry entry : entries) {
+            boolean debit = EntryDirection.fromCode(entry.direction()) == EntryDirection.DEBIT;
+            if (debit) {
+                debits = debits.add(entry.amount());
+            } else {
+                credits = credits.add(entry.amount());
+            }
+            boolean raising = (debit ? EntryDirection.DEBIT : EntryDirection.CREDIT) == raises;
+            balance = raising ? balance.add(entry.amount()) : balance.subtract(entry.amount());
+            lines.add(new LedgerAccountStatement.Line(entry.businessDate(), entry.valueDate(), entry.postedAt(),
+                    entry.journalNumber(), entry.sourceType(), entry.sourceReference(), entry.narration(),
+                    debit ? currencies.present(entry.amount(), currency) : null,
+                    debit ? null : currencies.present(entry.amount(), currency),
+                    currencies.present(balance, currency)));
+        }
+        return new LedgerAccountStatement(ledgerAccountId, currency, from, to, currencies.present(opening, currency),
+                currencies.present(debits, currency), currencies.present(credits, currency),
+                currencies.present(balance, currency), List.copyOf(lines));
     }
 
     @Transactional(propagation = Propagation.MANDATORY)

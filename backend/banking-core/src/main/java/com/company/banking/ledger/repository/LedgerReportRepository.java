@@ -5,6 +5,7 @@ import static com.company.banking.ledger.repository.SqlParams.uuid;
 import static com.company.banking.ledger.repository.SqlParams.uuidArray;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -26,7 +27,58 @@ public class LedgerReportRepository {
     public record BalanceCheck(UUID ledgerAccountId, BigDecimal projected, BigDecimal fromEntries) {
     }
 
+    /**
+     * One entry of a sub-ledger account with its journal details, for statements.
+     */
+    public record StatementEntry(LocalDate businessDate, LocalDate valueDate, Instant postedAt, String journalNumber,
+                                 String sourceType, String sourceReference, String narration, String direction,
+                                 BigDecimal amount) {
+    }
+
     private final JdbcClient jdbc;
+
+    /**
+     * Entries of a sub-ledger account between two business dates, in posting order; at most {@code limit} rows.
+     */
+    public List<StatementEntry> accountEntries(UUID tenantId, UUID ledgerAccountId, LocalDate from, LocalDate to,
+                                               int limit) {
+        return jdbc.sql("SELECT e.business_date, j.value_date, j.posted_at, j.journal_number, j.source_type,"
+                        + " j.source_reference, coalesce(e.narration, j.description) AS narration, e.direction,"
+                        + " e.amount"
+                        + " FROM core.ledger_entry e"
+                        + " JOIN core.journal_entry j ON j.tenant_id = e.tenant_id AND j.id = e.journal_entry_id"
+                        + " WHERE e.tenant_id = :tenantId AND e.ledger_account_id = :ledgerAccountId"
+                        + " AND e.business_date BETWEEN :from AND :to"
+                        + " ORDER BY e.business_date, j.posted_at, j.journal_number, e.line_no"
+                        + " LIMIT :limit")
+                .param("tenantId", uuid(tenantId))
+                .param("ledgerAccountId", uuid(ledgerAccountId))
+                .param("from", date(from))
+                .param("to", date(to))
+                .param("limit", limit)
+                .query((rs, rowNum) -> new StatementEntry(rs.getObject("business_date", LocalDate.class),
+                        rs.getObject("value_date", LocalDate.class),
+                        rs.getTimestamp("posted_at").toInstant(), rs.getString("journal_number"),
+                        rs.getString("source_type"), rs.getString("source_reference"), rs.getString("narration"),
+                        rs.getString("direction"), rs.getBigDecimal("amount")))
+                .list();
+    }
+
+    /**
+     * Debit and credit totals of a sub-ledger account before a business date (the opening position of a statement).
+     */
+    public GlTotals accountTotalsBefore(UUID tenantId, UUID ledgerAccountId, LocalDate before) {
+        return jdbc.sql("SELECT coalesce(sum(amount) FILTER (WHERE direction = 'D'), 0) AS debits,"
+                        + " coalesce(sum(amount) FILTER (WHERE direction = 'C'), 0) AS credits"
+                        + " FROM core.ledger_entry"
+                        + " WHERE tenant_id = :tenantId AND ledger_account_id = :ledgerAccountId"
+                        + " AND business_date < :before")
+                .param("tenantId", uuid(tenantId))
+                .param("ledgerAccountId", uuid(ledgerAccountId))
+                .param("before", date(before))
+                .query((rs, rowNum) -> new GlTotals(null, rs.getBigDecimal("debits"), rs.getBigDecimal("credits")))
+                .single();
+    }
 
     /**
      * Debit and credit totals per GL account up to and including {@code asOf}, in one currency.
