@@ -44,6 +44,7 @@ public final class DefaultChartOfAccounts {
         posting(chart, "1140", "Balances with banks", AccountClass.ASSET, "1100", true, SystemAccount.BANK_BALANCES);
         posting(chart, "1150", "Mobile money settlement", AccountClass.ASSET, "1100", false,
                 SystemAccount.MOBILE_MONEY_SETTLEMENT);
+        posting(chart, "1160", "Cash in transit", AccountClass.ASSET, "1100", false, SystemAccount.CASH_IN_TRANSIT);
         header(chart, "1200", "Loans and advances", AccountClass.ASSET, "1000");
         posting(chart, "1210", "Loan principal", AccountClass.ASSET, "1200", false, SystemAccount.LOAN_PRINCIPAL);
         posting(chart, "1220", "Interest receivable", AccountClass.ASSET, "1200", false,
@@ -53,6 +54,7 @@ public final class DefaultChartOfAccounts {
         header(chart, "1900", "Clearing and suspense", AccountClass.ASSET, "1000");
         posting(chart, "1910", "Inter-branch due from", AccountClass.ASSET, "1900", false,
                 SystemAccount.INTER_BRANCH_DUE_FROM);
+        posting(chart, "1920", "Teller shortages", AccountClass.ASSET, "1900", false, SystemAccount.TELLER_SHORTAGES);
         posting(chart, "1990", "Suspense (debit)", AccountClass.ASSET, "1900", true, SystemAccount.SUSPENSE_DEBIT);
 
         // Liabilities

@@ -21,9 +21,12 @@ import com.company.banking.ledger.model.SystemAccount;
 import com.company.banking.ledger.repository.ChartOfAccountRepository;
 import com.company.banking.ledger.repository.LedgerReportRepository;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -63,6 +66,49 @@ public class ChartOfAccountService {
                 .metadata("institutionType", institutionType)
                 .metadata("accounts", template.size())
                 .build());
+    }
+
+    /**
+     * Adds system accounts introduced after an institution's chart was created (e.g. cash in transit), under their
+     * default parent and code. An account whose code the institution already uses for something else is left out;
+     * postings that need it then fail with {@code SYSTEM_ACCOUNT_MISSING} until it is set up.
+     */
+    @Transactional
+    public void provisionMissingSystemAccounts(String institutionType) {
+        UUID tenantId = TenantContext.requireTenantId();
+        if (!repository.existsByTenantId(tenantId)) {
+            return;
+        }
+        Map<String, ChartOfAccount> byCode = new HashMap<>();
+        Set<String> systemCodes = new HashSet<>();
+        for (ChartOfAccount account : repository.findAllByTenantIdOrderByCode(tenantId)) {
+            byCode.put(account.getCode(), account);
+            if (account.getSystemCode() != null) {
+                systemCodes.add(account.getSystemCode());
+            }
+        }
+        List<String> added = new ArrayList<>();
+        for (DefaultChartOfAccounts.Entry entry : DefaultChartOfAccounts.forInstitutionType(institutionType)) {
+            if (entry.systemAccount() == null || systemCodes.contains(entry.systemAccount().name())
+                    || byCode.containsKey(entry.code())) {
+                continue;
+            }
+            ChartOfAccount parent = entry.parentCode() == null ? null : byCode.get(entry.parentCode());
+            if (entry.parentCode() != null && (parent == null || !parent.isHeader())) {
+                continue;
+            }
+            ChartOfAccount account = repository.save(new ChartOfAccount(UuidV7.next(), tenantId, entry.code(),
+                    entry.name(), entry.accountClass(), entry.side(), parent == null ? null : parent.getId(),
+                    entry.header(), entry.manualPostingAllowed(), entry.systemAccount().name()));
+            byCode.put(entry.code(), account);
+            added.add(entry.code());
+        }
+        if (!added.isEmpty()) {
+            repository.flush();
+            auditService.record(AuditEvent.builder("SYSTEM_GL_ACCOUNTS_ADDED", RESOURCE)
+                    .metadata("codes", added)
+                    .build());
+        }
     }
 
     @Transactional(readOnly = true)
