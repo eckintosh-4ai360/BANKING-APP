@@ -8,6 +8,15 @@ banking:
     data-keys:
       1: BVOxNmlXHutcXPq9VPpsu97iDGWPvjp6GCFAdnrmrwM=
     blind-index-key: ACtTDQ1zY8e+jYoxRHFUOd4MVP7IIIBM+9shtcgHaDc=
+  # One-second seals with no lag, so tests can seal what they just wrote (sealing only runs when a test calls it).
+  audit:
+    seal:
+      active-key-version: 1
+      keys:
+        1: MW2Iz7lJP0DfwbNND8KV6wgowJ3LR+SIgnZOSP0nT64=
+      period: PT1S
+      lag: PT0S
+      max-per-run: 100000
   kyc:
     identity-verification-provider: stub
   storage:

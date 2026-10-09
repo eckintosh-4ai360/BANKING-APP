@@ -134,6 +134,16 @@ banking:
     data-keys:
       1: ${DATA_KEY_V1:}
     blind-index-key: ${BLIND_INDEX_KEY:}
+  # The audit trail is sealed every period (hash chain + HMAC). Seal keys come from the secret manager; the
+  # application refuses to start without one. Keep retired versions configured to verify their seals.
+  audit:
+    seal:
+      active-key-version: ${AUDIT_SEAL_KEY_ACTIVE_VERSION:1}
+      keys:
+        1: ${AUDIT_SEAL_KEY_V1:}
+      period: PT1H
+      lag: PT5M
+      interval: PT10M
   storage:
     backend: filesystem
     base-path: ${DOCUMENT_STORAGE_PATH:./data/documents}

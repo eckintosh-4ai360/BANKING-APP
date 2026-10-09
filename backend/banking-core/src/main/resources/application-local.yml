@@ -16,6 +16,10 @@ banking:
     data-keys:
       1: bN9YtA/MrxiGo85v+XFsh9dIl9SEyvMbkA+lTekXVT8=
     blind-index-key: Ing4I/mBG69mjiX86y9NBzQU8XvLiRHTu8hWM/nr6U4=
+  audit:
+    seal:
+      keys:
+        1: U+Y9NROLhm0a8O19L9xty26psAg5AIHHazP5V1frC7U=
   kyc:
     identity-verification-provider: stub
   security:
