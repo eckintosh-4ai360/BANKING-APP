@@ -46,6 +46,7 @@ import jakarta.persistence.criteria.Predicate;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -302,10 +303,12 @@ public class AccountService {
         Account account = accountRepository.findByTenantIdAndId(tenantId, accountId)
                 .orElseThrow(() -> new ResourceNotFoundException("Account"));
         Instant now = clock.instant();
+        // The posting holds the business date's share lock, so this is the date it was posted on.
+        LocalDate businessDate = businessDates.today();
         if (account.getStatus() == AccountStatus.PENDING && ledgerBalance.compareTo(
                 productService.terms(account.getProductVersionId()).minOpeningBalance()) >= 0) {
             account.changeStatus(AccountStatus.ACTIVE, "Opening deposit received", now);
-            account.recordActivity(now);
+            account.recordActivity(now, businessDate);
             accountRepository.saveAndFlush(account);
             auditService.record(AuditEvent.builder("ACCOUNT_ACTIVATED", RESOURCE)
                     .resourceId(accountId)
@@ -316,7 +319,7 @@ public class AccountService {
                     .build());
             return;
         }
-        accountRepository.touchActivity(tenantId, accountId, now);
+        accountRepository.touchActivity(tenantId, accountId, now, businessDate);
     }
 
     /**

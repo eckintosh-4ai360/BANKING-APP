@@ -83,6 +83,10 @@ public class Account extends AuditableEntity {
     @Column(name = "last_activity_at")
     private Instant lastActivityAt;
 
+    /** Business date of the last customer posting (dormancy counts from it). */
+    @Column(name = "last_activity_on")
+    private LocalDate lastActivityOn;
+
     public Account(UUID id, UUID tenantId, String accountNumber, UUID customerId, UUID productId,
                    UUID productVersionId, UUID ledgerAccountId, UUID branchId, String currency, String title,
                    OwnershipType ownershipType, LocalDate openedOn, boolean awaitingFunding, Instant now) {
@@ -119,7 +123,8 @@ public class Account extends AuditableEntity {
         this.closedOn = on;
     }
 
-    public void recordActivity(Instant at) {
+    public void recordActivity(Instant at, LocalDate businessDate) {
         this.lastActivityAt = at;
+        this.lastActivityOn = businessDate;
     }
 }
