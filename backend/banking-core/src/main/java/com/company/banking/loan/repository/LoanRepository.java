@@ -40,6 +40,18 @@ public interface LoanRepository extends JpaRepository<Loan, UUID> {
                       @Param("branchIds") Collection<UUID> branchIds, @Param("customerId") UUID customerId,
                       @Param("status") Loan.Status status, Pageable page);
 
+    /** Active loans in arrears in the caller's branches, the longest overdue first (the collections queue). */
+    @Query("""
+            select l from Loan l
+            where l.tenantId = :tenantId
+              and (:allBranches = true or l.branchId in :branchIds)
+              and l.status = com.company.banking.loan.entity.Loan.Status.ACTIVE
+              and l.daysPastDue >= :minDays
+            order by l.daysPastDue desc, l.id""")
+    Page<Loan> inArrears(@Param("tenantId") UUID tenantId, @Param("allBranches") boolean allBranches,
+                         @Param("branchIds") Collection<UUID> branchIds, @Param("minDays") int minDays,
+                         Pageable page);
+
     /** Next batch (by id) of loans in a status, for end-of-day. */
     @Query("select l.id from Loan l where l.tenantId = :tenantId and l.status = :status and l.id > :after"
             + " order by l.id")
