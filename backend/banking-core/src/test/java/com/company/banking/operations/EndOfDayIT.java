@@ -6,9 +6,11 @@ import com.company.banking.common.eod.EndOfDayCheck;
 import com.company.banking.common.eod.EndOfDayProbe;
 import com.company.banking.ledger.LedgerIntegrationTest;
 import com.company.banking.ledger.dto.PostedJournal;
+import com.company.banking.ledger.service.BusinessDateService;
 import com.company.banking.operations.service.BusinessCalendarService;
 import com.company.banking.support.Fixtures.StaffHandle;
 import com.company.banking.support.Fixtures.TenantHandle;
+import com.company.banking.support.ProductRequests;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -79,6 +81,12 @@ class EndOfDayIT extends LedgerIntegrationTest {
     @Autowired
     private JdbcClient jdbcClient;
 
+    @Autowired
+    private BusinessDateService businessDates;
+
+    /** The gate closes a month end that falls on a Friday, so interest is accrued over the weekend and paid. */
+    private static final LocalDate MONTH_END = LocalDate.of(2027, 4, 30);
+
     @AfterEach
     void disarm() {
         probe.armedStep = null;
@@ -120,9 +128,17 @@ class EndOfDayIT extends LedgerIntegrationTest {
     void aRunStoppedAtAnyCheckpointResumesToTheResultOfAnUninterruptedRun() {
         TenantHandle reference = scenario();
         api.post("/api/v1/operations/eod", reference.adminToken(), null).expect(202);
+        assertThat(previousDate(reference)).isEqualTo(MONTH_END.toString());
         Map<String, List<BigDecimal>> expected = snapshot(reference, previousDate(reference));
+        List<String> expectedInterest = interest(reference);
+        assertThat(expectedInterest.get(0)).as("three accounts accrue three days").startsWith("accruals 9 ")
+                .endsWith(" unposted 0");
+        assertThat(expectedInterest.get(1)).as("and are paid at the month end").startsWith("payouts 3 ")
+                .endsWith(" 3");
 
         String[][] checkpoints = {
+                {"DEPOSIT_INTEREST_ACCRUAL", "batch"}, {"DEPOSIT_INTEREST_ACCRUAL", "journal"},
+                {"DEPOSIT_INTEREST_PAYOUT", "batch"}, {"DORMANCY", "batch"},
                 {"GL_SNAPSHOT", "before"}, {"GL_SNAPSHOT", "written"}, {"LEDGER_RECONCILIATION", "before"}};
         for (String[] checkpoint : checkpoints) {
             TenantHandle tenant = scenario();
@@ -141,6 +157,8 @@ class EndOfDayIT extends LedgerIntegrationTest {
             assertThat(resumed.get("attempts").asInt()).isEqualTo(2);
             assertThat(snapshot(tenant, previousDate(tenant))).as("after resuming from %s/%s", checkpoint[0],
                     checkpoint[1]).isEqualTo(expected);
+            assertThat(interest(tenant)).as("interest after resuming from %s/%s", checkpoint[0], checkpoint[1])
+                    .isEqualTo(expectedInterest);
         }
     }
 
@@ -161,16 +179,59 @@ class EndOfDayIT extends LedgerIntegrationTest {
 
     // ---------------------------------------------------------------------------------------------------------
 
-    /** Two accounts in two branches with a deposit and an inter-branch transfer. */
+    /**
+     * At {@link #MONTH_END}: two ledger accounts in two branches with a deposit and an inter-branch transfer, and
+     * three customer accounts earning interest (daily balance at two rates, and minimum balance).
+     */
     private TenantHandle scenario() {
         TenantHandle tenant = fixtures.onboardTenant();
+        inTenant(tenant.id(), () -> businessDates.roll(businessDates.today(), MONTH_END));
         UUID kumasi = fixtures.createBranch(tenant, "KUM");
         UUID first = openDepositAccount(tenant.id(), tenant.headOfficeId(), "GHS", "First");
         UUID second = openDepositAccount(tenant.id(), kumasi, "GHS", "Second");
         deposit(tenant.id(), first, tenant.headOfficeId(), "GHS", "1000.00");
         transfer(tenant.id(), tenant.headOfficeId(), first, second, "125.50");
         withdraw(tenant.id(), second, kumasi, "GHS", "25.50");
+
+        StaffHandle officer = fixtures.createStaff(tenant, "officer", tenant.headOfficeId(), false, "LOAN_OFFICER");
+        StaffHandle manager = fixtures.createStaff(tenant, "manager", tenant.headOfficeId(), false, "BRANCH_MANAGER");
+        UUID customer = fixtures.verifiedIndividual(officer, manager, tenant.headOfficeId(), "Esi");
+        Map<String, Object> minimum = ProductRequests.terms("0");
+        minimum.put("interestCalcMethod", "MIN_MONTHLY_BALANCE");
+        String daily = fixtures.publishedProduct(tenant, "SAVDAY", "SAVINGS", ProductRequests.terms("0"));
+        String lowest = fixtures.publishedProduct(tenant, "SAVMIN", "SAVINGS", minimum);
+        Map<String, String> funding = Map.of(daily, "1000.00", lowest, "777.77");
+        for (String productId : List.of(daily, daily, lowest)) {
+            String accountId = fixtures.openAccount(manager.token(), customer, productId).get("id").asString();
+            deposit(tenant.id(), ledgerAccountOf(tenant, accountId), tenant.headOfficeId(), "GHS",
+                    funding.get(productId));
+        }
         return tenant;
+    }
+
+    private UUID ledgerAccountOf(TenantHandle tenant, String accountId) {
+        return inTenant(tenant.id(), () -> jdbcClient.sql("SELECT ledger_account_id FROM core.account WHERE id = :id")
+                .param("id", UUID.fromString(accountId))
+                .query(UUID.class)
+                .single());
+    }
+
+    /** Interest rows of the tenant: how many, and their totals. */
+    private List<String> interest(TenantHandle tenant) {
+        return inTenant(tenant.id(), () -> List.of(
+                jdbcClient.sql("""
+                                SELECT 'accruals ' || count(*) || ' ' || coalesce(sum(amount), 0) || ' '
+                                       || coalesce(sum(gl_amount), 0) || ' unposted '
+                                       || count(*) FILTER (WHERE gl_amount > 0 AND journal_entry_id IS NULL)
+                                FROM core.deposit_interest_accrual""").query(String.class).single(),
+                jdbcClient.sql("""
+                                SELECT 'payouts ' || count(*) || ' ' || coalesce(sum(amount), 0) || ' '
+                                       || count(journal_entry_id)
+                                FROM core.deposit_interest_payout""").query(String.class).single(),
+                jdbcClient.sql("""
+                                SELECT 'positions ' || count(*) || ' ' || coalesce(sum(accrued_exact), 0) || ' '
+                                       || coalesce(sum(paid_out), 0) || ' ' || min(period_start)
+                                FROM core.deposit_interest_position""").query(String.class).single()));
     }
 
     /**
