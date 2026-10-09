@@ -26,6 +26,7 @@ import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import type { z } from 'zod';
+import { AccountsPanel } from '@/components/customer/accounts-panel';
 import { DocumentsPanel } from '@/components/customer/documents-panel';
 import { IdentificationsPanel } from '@/components/customer/identifications-panel';
 import { KycPanel } from '@/components/customer/kyc-panel';
@@ -38,6 +39,7 @@ import { contactSchema } from '@/lib/schemas';
 export default function CustomerPage() {
   const { id } = useParams<{ id: string }>();
   const [tab, setTab] = useState('profile');
+  const canViewAccounts = useCan(Permission.accountView);
   const customer = useQuery({
     queryKey: customerKey(id),
     queryFn: ({ signal }) => bff<CustomerDetail>(`/customers/${id}`, { signal }),
@@ -62,6 +64,7 @@ export default function CustomerPage() {
     { id: 'relations', label: data.customerType === 'BUSINESS' ? 'Related parties' : 'Next of kin' },
     { id: 'documents', label: `Documents (${data.documents.length})` },
     { id: 'kyc', label: 'KYC' },
+    ...(canViewAccounts ? [{ id: 'accounts', label: 'Accounts' }] : []),
   ];
 
   return (
@@ -96,6 +99,7 @@ export default function CustomerPage() {
         {tab === 'relations' ? (data.customerType === 'BUSINESS' ? <RelatedPartiesPanel customer={data} /> : <NextOfKinPanel customer={data} />) : null}
         {tab === 'documents' ? <DocumentsPanel customer={data} /> : null}
         {tab === 'kyc' ? <KycPanel customer={data} /> : null}
+        {tab === 'accounts' && canViewAccounts ? <AccountsPanel customer={data} /> : null}
       </div>
     </>
   );
