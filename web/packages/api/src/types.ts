@@ -650,7 +650,13 @@ export interface Transaction {
   reversalReason: string | null;
 }
 
-export type ApprovalType = 'TRANSACTION_REVERSAL' | 'MANUAL_JOURNAL' | 'CASH_WITHDRAWAL' | 'TRANSFER';
+export type ApprovalType =
+  | 'TRANSACTION_REVERSAL'
+  | 'MANUAL_JOURNAL'
+  | 'CASH_WITHDRAWAL'
+  | 'TRANSFER'
+  | 'LOAN_RESTRUCTURE'
+  | 'LOAN_WRITE_OFF';
 export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 
 export interface Approval {
@@ -1091,4 +1097,359 @@ export interface SusuPlanDetail {
   plan: SusuPlan;
   contributions: SusuContribution[];
   commissions: { cycleNo: number; amountDue: Amount; amountCharged: Amount; businessDate: IsoDate }[];
+}
+
+// --------------------------------------------------------------------------------------------------- loans
+
+export type InterestMethod = 'FLAT' | 'DECLINING_BALANCE_EQUAL_INSTALLMENT' | 'DECLINING_BALANCE_EQUAL_PRINCIPAL';
+export type LoanDayCount = 'ACTUAL_365F' | 'ACTUAL_360' | 'THIRTY_360';
+export type RepaymentFrequency = 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'QUARTERLY';
+
+/** The terms of a loan product version as sent to the server (GL accounts default to system accounts). */
+export interface LoanTermsRequest {
+  currency: string;
+  minAmount: Amount;
+  maxAmount: Amount;
+  minInstallments: number;
+  maxInstallments: number;
+  interestMethod: InterestMethod;
+  /** Percent a year. */
+  annualRate: string;
+  dayCount: LoanDayCount;
+  repaymentFrequency: RepaymentFrequency;
+  principalGrace?: number;
+  interestGrace?: number;
+  roundingMode?: 'HALF_EVEN' | 'HALF_UP';
+  allocationOrder?: string;
+  processingFeeRate?: string;
+  processingFeeFlat?: Amount;
+  penaltyRate?: string;
+  penaltyGraceDays?: number;
+  requiredGuarantors?: number;
+  collateralCoverage?: string;
+  secondApprovalAbove?: Amount;
+  requiredKycTier?: string;
+}
+
+export interface LoanProductVersion {
+  id: Uuid;
+  versionNo: number;
+  status: 'DRAFT' | 'PUBLISHED' | 'RETIRED';
+  currency: string;
+  minAmount: Amount;
+  maxAmount: Amount;
+  minInstallments: number;
+  maxInstallments: number;
+  interestMethod: InterestMethod;
+  annualRate: string;
+  dayCount: LoanDayCount;
+  repaymentFrequency: RepaymentFrequency;
+  principalGrace: number;
+  interestGrace: number;
+  roundingMode: string;
+  allocationOrder: string;
+  processingFeeRate: string;
+  processingFeeFlat: Amount;
+  penaltyRate: string;
+  penaltyGraceDays: number;
+  requiredGuarantors: number;
+  collateralCoverage: string;
+  secondApprovalAbove: Amount | null;
+  requiredKycTier: string | null;
+  createdAt: IsoDateTime;
+  publishedAt: IsoDateTime | null;
+}
+
+export interface LoanProduct {
+  id: Uuid;
+  code: string;
+  name: string;
+  description: string | null;
+  status: 'ACTIVE' | 'INACTIVE';
+  currentVersion: LoanProductVersion | null;
+  versions: LoanProductVersion[];
+  version: number;
+}
+
+export interface ScheduleLine {
+  number: number;
+  fromDate: IsoDate;
+  dueDate: IsoDate;
+  principal: Amount;
+  interest: Amount;
+  total: Amount;
+  outstandingAfter: Amount;
+}
+
+/** Computed by the server from the product's terms; never by the browser. */
+export interface SchedulePreview {
+  principal: Amount;
+  processingFee: Amount;
+  netDisbursed: Amount;
+  totalInterest: Amount;
+  totalRepayable: Amount;
+  installmentAmount: Amount | null;
+  disbursementDate: IsoDate;
+  maturityDate: IsoDate;
+  lines: ScheduleLine[];
+}
+
+export type LoanApplicationStatus =
+  | 'DRAFT'
+  | 'SUBMITTED'
+  | 'ASSESSED'
+  | 'RECOMMENDED'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'WITHDRAWN'
+  | 'DISBURSED';
+
+export interface LoanApplication {
+  id: Uuid;
+  applicationNumber: string;
+  customerId: Uuid;
+  customerName: string | null;
+  branchId: Uuid;
+  productId: Uuid;
+  productCode: string | null;
+  productName: string | null;
+  productVersionId: Uuid;
+  currency: string;
+  requestedAmount: Amount;
+  requestedInstallments: number;
+  purpose: string;
+  monthlyIncome: Amount | null;
+  monthlyExpenses: Amount | null;
+  existingDebt: Amount | null;
+  disbursementAccountId: Uuid;
+  status: LoanApplicationStatus;
+  riskRating: 'LOW' | 'MEDIUM' | 'HIGH' | null;
+  assessmentNote: string | null;
+  approvedAmount: Amount | null;
+  approvedInstallments: number | null;
+  firstDueDate: IsoDate | null;
+  loanOfficerId: Uuid;
+  loanOfficerName: string | null;
+  secondApprovalRequired: boolean;
+  loanId: Uuid | null;
+  createdAt: IsoDateTime;
+  updatedAt: IsoDateTime;
+  version: number;
+}
+
+export interface LoanWorkflowStep {
+  type: 'SUBMIT' | 'ASSESS' | 'RECOMMEND' | 'APPROVE' | 'SECOND_APPROVE' | 'REJECT' | 'WITHDRAW' | 'DISBURSE';
+  actorId: Uuid;
+  actorName: string | null;
+  occurredAt: IsoDateTime;
+  note: string | null;
+}
+
+export interface LoanGuarantor {
+  id: Uuid;
+  customerId: Uuid | null;
+  fullName: string;
+  phone: string | null;
+  relationship: string;
+  guaranteedAmount: Amount;
+  verifiedBy: Uuid | null;
+  verifiedAt: IsoDateTime | null;
+}
+
+export interface LoanCollateral {
+  id: Uuid;
+  category: string;
+  description: string;
+  estimatedValue: Amount;
+  forcedSaleValue: Amount;
+  valuationDate: IsoDate;
+  status: 'PLEDGED' | 'RELEASED';
+  verifiedBy: Uuid | null;
+  verifiedAt: IsoDateTime | null;
+  releasedAt: IsoDateTime | null;
+}
+
+export interface LoanApplicationDetail {
+  application: LoanApplication;
+  steps: LoanWorkflowStep[];
+  guarantors: LoanGuarantor[];
+  collateral: LoanCollateral[];
+  security: { guarantorsRequired: number; guarantorsVerified: number; collateralNeeded: Amount; collateralVerified: Amount };
+}
+
+export type LoanStatus = 'ACTIVE' | 'CLOSED' | 'WRITTEN_OFF';
+
+export interface Loan {
+  id: Uuid;
+  loanNumber: string;
+  applicationId: Uuid;
+  customerId: Uuid;
+  customerName: string | null;
+  branchId: Uuid;
+  productVersionId: Uuid;
+  productCode: string | null;
+  productName: string | null;
+  repaymentAccountId: Uuid;
+  currency: string;
+  principal: Amount;
+  interestMethod: InterestMethod;
+  annualRate: string;
+  dayCount: LoanDayCount;
+  repaymentFrequency: RepaymentFrequency;
+  installments: number;
+  processingFee: Amount;
+  disbursementDate: IsoDate;
+  firstDueDate: IsoDate;
+  maturityDate: IsoDate;
+  status: LoanStatus;
+  daysPastDue: number;
+  delinquencyBand: string | null;
+  nonAccrual: boolean;
+  principalOutstanding: Amount;
+  interestReceivable: Amount;
+  penaltyReceivable: Amount;
+  arrears: Amount;
+  nextDueDate: IsoDate | null;
+  nextDueAmount: Amount | null;
+  provisionHeld: Amount;
+  scheduleVersion: number;
+  bandFloor: string | null;
+  bandFloorUntil: IsoDate | null;
+  writtenOff: Amount;
+  recovered: Amount;
+  closedOn: IsoDate | null;
+  version: number;
+}
+
+export interface LoanInstallment {
+  number: number;
+  fromDate: IsoDate;
+  dueDate: IsoDate;
+  principalDue: Amount;
+  interestDue: Amount;
+  penaltyDue: Amount;
+  principalPaid: Amount;
+  interestPaid: Amount;
+  penaltyPaid: Amount;
+  interestWaived: Amount;
+  outstanding: Amount;
+  paidOn: IsoDate | null;
+  status: 'UPCOMING' | 'DUE' | 'OVERDUE' | 'PAID' | 'PARTLY_PAID';
+}
+
+export interface LoanRepayment {
+  id: Uuid;
+  transactionId: Uuid;
+  source: 'ACCOUNT' | 'CASH' | 'FIELD';
+  amount: Amount;
+  penalty: Amount;
+  fee: Amount;
+  interest: Amount;
+  principal: Amount;
+  businessDate: IsoDate;
+  receivedBy: Uuid | null;
+  createdAt: IsoDateTime;
+}
+
+export interface LoanPayoff {
+  asOf: IsoDate;
+  principal: Amount;
+  interest: Amount;
+  penalty: Amount;
+  total: Amount;
+  interestWaived: Amount;
+}
+
+export interface LoanRestructureRecord {
+  id: Uuid;
+  fromVersion: number;
+  toVersion: number;
+  principal: Amount;
+  interestCarried: Amount;
+  penaltyCarried: Amount;
+  installments: number;
+  firstDueDate: IsoDate;
+  bandAtRestructure: string | null;
+  holdBandDays: number;
+  reason: string;
+  requestedBy: Uuid;
+  approvedBy: Uuid;
+  businessDate: IsoDate;
+}
+
+export interface LoanRecovery {
+  id: Uuid;
+  transactionId: Uuid;
+  source: 'ACCOUNT' | 'CASH';
+  amount: Amount;
+  businessDate: IsoDate;
+  receivedBy: Uuid | null;
+  createdAt: IsoDateTime;
+}
+
+export interface LoanDetail {
+  loan: Loan;
+  schedule: LoanInstallment[];
+  repayments: LoanRepayment[];
+  payoff: LoanPayoff | null;
+  restructures: LoanRestructureRecord[];
+  recoveries: LoanRecovery[];
+}
+
+export interface RepaymentReceipt {
+  repayment: LoanRepayment;
+  loan: Loan;
+  settled: boolean;
+}
+
+export interface RecoveryReceipt {
+  recovery: LoanRecovery;
+  loan: Loan;
+}
+
+export interface LoanCollectionActivity {
+  id: Uuid;
+  type: 'CALL' | 'VISIT' | 'SMS' | 'LETTER' | 'PROMISE' | 'OTHER';
+  note: string;
+  daysPastDue: number;
+  promisedAmount: Amount | null;
+  promisedDate: IsoDate | null;
+  promiseStatus: 'OPEN' | 'KEPT' | 'BROKEN' | null;
+  businessDate: IsoDate;
+  createdBy: Uuid;
+  createdAt: IsoDateTime;
+}
+
+export interface ArrearsItem {
+  loanId: Uuid;
+  loanNumber: string;
+  customerId: Uuid;
+  customerName: string | null;
+  customerPhone: string | null;
+  branchId: Uuid;
+  currency: string;
+  daysPastDue: number;
+  delinquencyBand: string | null;
+  overdue: Amount;
+  lastActivity: LoanCollectionActivity | null;
+}
+
+export interface DelinquencyBand {
+  code: string;
+  name: string;
+  minDays: number;
+  /** Percent of principal outstanding. */
+  provisionRate: string;
+  suspendAccrual: boolean;
+}
+
+export interface LoanPortfolio {
+  currency: string;
+  activeLoans: number;
+  principalOutstanding: Amount;
+  portfolioAtRisk30: Amount;
+  par30Percent: string;
+  provisionHeld: Amount;
+  nonAccrualLoans: number;
+  bands: { code: string; name: string; loans: number; principalOutstanding: Amount; provisionHeld: Amount }[];
 }
