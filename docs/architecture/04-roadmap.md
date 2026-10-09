@@ -51,6 +51,8 @@ Order inside the phase is strict:
 
 ## Phase 3: Branch operations
 
+Status: **done** (2026-10-09; backend and CMS screens, see [Phase 3 blueprint](07-phase3-blueprint.md) for the exit gate evidence and the follow-ups).
+
 Business date + holidays → vault & drawers (ledger accounts) → teller sessions & cash counts → cash movements & cash-in-transit → teller transactions (deposit/withdrawal now post to the drawer) → EOD framework (resumable steps) → reconciliation (teller, vault, ledger vs balance) → dormancy job → audit hash-chain sealing.
 **Gate:** EOD killed at every step and re-run produces identical results; teller expected balance always equals ledger.
 
