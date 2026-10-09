@@ -238,6 +238,43 @@ public final class LoanDtos {
 
     // ----------------------------------------------------------------------------------------------------- loans
 
+    // --------------------------------------------------------------------------------------------- portfolio
+
+    /**
+     * A delinquency band: from {@code minDays} days past due (up to the next band) loans are provisioned at
+     * {@code provisionRate} percent of their principal, and with {@code suspendAccrual} their interest is held in
+     * suspense instead of income until collected.
+     */
+    public record Band(
+            @NotBlank @Pattern(regexp = "^[A-Z][A-Z0-9_]{1,19}$") String code,
+            @NotBlank @Size(max = 60) String name,
+            @NotNull @Min(0) @Max(3650) Integer minDays,
+            @NotNull @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 4) BigDecimal provisionRate,
+            @NotNull Boolean suspendAccrual) {
+    }
+
+    /**
+     * The whole set of bands (it replaces the current one): one band starts at 0 days, and provision rates and
+     * accrual suspension never decrease as days past due grow.
+     */
+    public record Bands(@NotNull @Size(min = 1, max = 12) List<@Valid Band> bands) {
+    }
+
+    public record PortfolioBand(String code, String name, long loans, BigDecimal principalOutstanding,
+                                BigDecimal provisionHeld) {
+    }
+
+    /**
+     * Active loans of one currency in the caller's branches, as at the last end-of-day classification.
+     *
+     * @param portfolioAtRisk30 principal outstanding of loans more than 30 days past due
+     * @param par30Percent      that as a percentage of all principal outstanding
+     */
+    public record Portfolio(String currency, long activeLoans, BigDecimal principalOutstanding,
+                            BigDecimal portfolioAtRisk30, BigDecimal par30Percent, BigDecimal provisionHeld,
+                            long nonAccrualLoans, List<PortfolioBand> bands) {
+    }
+
     /**
      * @param firstDueDate overrides the approved first due date (which may have passed since approval)
      */
@@ -278,7 +315,7 @@ public final class LoanDtos {
                        LocalDate maturityDate, String status, int daysPastDue, String delinquencyBand,
                        boolean nonAccrual, BigDecimal principalOutstanding, BigDecimal interestReceivable,
                        BigDecimal penaltyReceivable, BigDecimal arrears, LocalDate nextDueDate,
-                       BigDecimal nextDueAmount, LocalDate closedOn, Long version) {
+                       BigDecimal nextDueAmount, BigDecimal provisionHeld, LocalDate closedOn, Long version) {
     }
 
     public record Repayment(UUID id, UUID transactionId, String source, BigDecimal amount, BigDecimal penalty,
