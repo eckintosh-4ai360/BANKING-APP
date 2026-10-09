@@ -9,7 +9,6 @@ import com.company.banking.approval.service.ApprovalHandler.ApprovedAction;
 import com.company.banking.approval.service.ApprovalService;
 import com.company.banking.audit.service.AuditEvent;
 import com.company.banking.audit.service.AuditService;
-import com.company.banking.branch.service.BranchService;
 import com.company.banking.common.error.BankingException;
 import com.company.banking.common.error.ResourceNotFoundException;
 import com.company.banking.common.id.References;
@@ -28,7 +27,6 @@ import com.company.banking.ledger.dto.ReversalRequest;
 import com.company.banking.ledger.exception.LedgerErrorCode;
 import com.company.banking.ledger.model.EntryDirection;
 import com.company.banking.ledger.model.JournalSource;
-import com.company.banking.ledger.model.SystemAccount;
 import com.company.banking.ledger.service.BusinessDateService;
 import com.company.banking.ledger.service.CurrencyService;
 import com.company.banking.ledger.service.LedgerAccountService;
@@ -38,6 +36,9 @@ import com.company.banking.product.dto.ProductTerms;
 import com.company.banking.product.model.ChargeEvent;
 import com.company.banking.product.service.ChargeCalculator;
 import com.company.banking.product.service.ProductService;
+import com.company.banking.teller.dto.CashDrawerRef;
+import com.company.banking.teller.exception.TellerErrorCode;
+import com.company.banking.teller.service.TellerSessionService;
 import com.company.banking.transaction.dto.CashDepositRequest;
 import com.company.banking.transaction.dto.CashWithdrawalRequest;
 import com.company.banking.transaction.dto.MovementResponse;
@@ -95,7 +96,7 @@ public class TransactionService {
     private final PostingEngine postingEngine;
     private final LedgerAccountService ledgerAccounts;
     private final CurrencyService currencies;
-    private final BranchService branchService;
+    private final TellerSessionService tellerSessions;
     private final BusinessDateService businessDates;
     private final IdempotencyService idempotency;
     private final ApprovalService approvalService;
@@ -106,10 +107,10 @@ public class TransactionService {
     private final Clock clock;
 
     /**
-     * What an approved withdrawal or transfer runs with: the original request, the cash branch chosen at the time
-     * and the maker's idempotency key (kept on the transaction for tracing).
+     * What an approved withdrawal or transfer runs with: the original request, the maker's drawer (the cash is paid
+     * from it) and the maker's idempotency key (kept on the transaction for tracing).
      */
-    public record PendingWithdrawal(CashWithdrawalRequest request, String idempotencyKey) {
+    public record PendingWithdrawal(CashWithdrawalRequest request, UUID drawerId, String idempotencyKey) {
     }
 
     public record PendingTransfer(TransferRequest request, String idempotencyKey) {
@@ -127,27 +128,28 @@ public class TransactionService {
                 throw new BankingException(TransactionErrorCode.ACCOUNT_NOT_CREDITABLE);
             }
             BigDecimal amount = validAmount(request.amount(), account.currency());
-            UUID cashBranch = cashBranch(request.branchId(), account);
+            CashDrawerRef drawer = tellerSessions.drawerForCash(CurrentActor.require().id());
+            requireDrawerCurrency(drawer, account);
             ProductTerms terms = productService.terms(account.productVersionId());
             Charge charge = charge(terms, ChargeEvent.CASH_DEPOSIT, amount);
             requireBelowMaximum(account, terms, amount.subtract(charge.amount()));
 
             String narration = narration(request.narration(), "Cash deposit");
             List<PostingLine> lines = new ArrayList<>();
-            lines.add(PostingLine.toSystemAccount(SystemAccount.CASH_AT_BRANCH, cashBranch, account.currency(),
-                    EntryDirection.DEBIT, amount, narration));
+            lines.add(PostingLine.toLedgerAccount(drawer.ledgerAccountId(), EntryDirection.DEBIT, amount, narration));
             lines.add(PostingLine.toLedgerAccount(account.ledgerAccountId(), EntryDirection.CREDIT, amount,
                     narration));
             addCharge(lines, account, terms, charge);
-            return post(new Movement(TransactionType.CASH_DEPOSIT, null, account, cashBranch, amount, charge.amount(),
-                    account.currency(), narration, request.externalReference(), idempotencyKey), lines, null);
+            return post(new Movement(TransactionType.CASH_DEPOSIT, null, account, drawer.branchId(), drawer.drawerId(),
+                    amount, charge.amount(), account.currency(), narration, request.externalReference(),
+                    idempotencyKey), lines, null);
         });
     }
 
     @Transactional
     public Result<MovementResponse> withdraw(String idempotencyKey, CashWithdrawalRequest request) {
         return idempotent(TransactionType.CASH_WITHDRAWAL, idempotencyKey, request,
-                () -> withdrawal(request, idempotencyKey, null));
+                () -> withdrawal(request, idempotencyKey, null, null));
     }
 
     @Transactional
@@ -176,7 +178,7 @@ public class TransactionService {
     @Transactional(propagation = Propagation.MANDATORY)
     public UUID executeApprovedWithdrawal(ApprovedAction action) {
         PendingWithdrawal pending = jsonMapper.readValue(action.payloadJson(), PendingWithdrawal.class);
-        return withdrawal(pending.request(), pending.idempotencyKey(), action).transaction().id();
+        return withdrawal(pending.request(), pending.idempotencyKey(), action, pending.drawerId()).transaction().id();
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -202,6 +204,10 @@ public class TransactionService {
                 .toList());
         if (transaction.getStatus() != TransactionStatus.POSTED) {
             throw new BankingException(TransactionErrorCode.TRANSACTION_ALREADY_REVERSED);
+        }
+        if (transaction.getCashDrawerId() != null) {
+            // Reversing cash changes what the drawer should hold, so someone must be working it to hand cash over.
+            tellerSessions.requireOpenDrawer(transaction.getCashDrawerId());
         }
         PostedJournal reversal = postingEngine.reverseApproved(new ReversalRequest(transaction.getJournalEntryId(),
                 pending.reason(), transaction.getId(), null), action.requestedBy());
@@ -238,6 +244,7 @@ public class TransactionService {
      * cash side).
      */
     private record Movement(TransactionType type, PostingAccount debit, PostingAccount credit, UUID branchId,
+                            UUID drawerId,
                             BigDecimal amount, BigDecimal fee, String currency, String narration,
                             String externalReference, String idempotencyKey) {
     }
@@ -252,38 +259,43 @@ public class TransactionService {
     /**
      * @param approval the approved request when a checker is executing it; null for the maker's own request
      */
+    /**
+     * @param approval      the approved request when a checker is executing it; null for the teller's own request
+     * @param approvedDrawer the maker's drawer recorded with the request (approved execution only)
+     */
     private MovementResponse withdrawal(CashWithdrawalRequest request, String idempotencyKey,
-                                        ApprovedAction approval) {
+                                        ApprovedAction approval, UUID approvedDrawer) {
         PostingAccount account = accountService.lockForPosting(List.of(request.accountId())).get(request.accountId());
         if (!account.debitAllowed()) {
             throw new BankingException(TransactionErrorCode.ACCOUNT_NOT_DEBITABLE);
         }
         BigDecimal amount = validAmount(request.amount(), account.currency());
-        UUID cashBranch = cashBranch(request.branchId(), account);
+        CashDrawerRef drawer = approval == null ? tellerSessions.drawerForCash(CurrentActor.require().id())
+                : tellerSessions.drawerForApprovedCash(approvedDrawer, approval.requestedBy());
+        requireDrawerCurrency(drawer, account);
         ProductTerms terms = productService.terms(account.productVersionId());
         Charge charge = charge(terms, ChargeEvent.CASH_WITHDRAWAL, amount);
         requireWithinLimits(account, terms, amount);
         requireMinimumBalanceKept(account, terms, amount.add(charge.amount()));
         requireFunds(account, amount.add(charge.amount()));
+        requireDrawerCash(drawer, amount);
         if (approval == null
                 && approvalService.requiresApproval(ApprovalType.CASH_WITHDRAWAL, account.currency(), amount)) {
-            CashWithdrawalRequest fixedBranch = new CashWithdrawalRequest(request.accountId(), cashBranch,
-                    request.amount(), request.narration(), request.externalReference());
             return MovementResponse.pending(approvalService.submit(new ApprovalSubmission(
-                    ApprovalType.CASH_WITHDRAWAL, cashBranch, amount, account.currency(), "ACCOUNT", null,
+                    ApprovalType.CASH_WITHDRAWAL, drawer.branchId(), amount, account.currency(), "ACCOUNT", null,
                     "Cash withdrawal of " + account.currency() + " " + currencies.present(amount, account.currency())
-                            .toPlainString() + " from " + account.accountNumber(),
-                    new PendingWithdrawal(fixedBranch, idempotencyKey))));
+                            .toPlainString() + " from " + account.accountNumber() + " at drawer " + drawer.code(),
+                    new PendingWithdrawal(request, drawer.drawerId(), idempotencyKey))));
         }
 
         String narration = narration(request.narration(), "Cash withdrawal");
         List<PostingLine> lines = new ArrayList<>();
         lines.add(PostingLine.toLedgerAccount(account.ledgerAccountId(), EntryDirection.DEBIT, amount, narration));
-        lines.add(PostingLine.toSystemAccount(SystemAccount.CASH_AT_BRANCH, cashBranch, account.currency(),
-                EntryDirection.CREDIT, amount, narration));
+        lines.add(PostingLine.toLedgerAccount(drawer.ledgerAccountId(), EntryDirection.CREDIT, amount, narration));
         addCharge(lines, account, terms, charge);
-        return post(new Movement(TransactionType.CASH_WITHDRAWAL, account, null, cashBranch, amount, charge.amount(),
-                account.currency(), narration, request.externalReference(), idempotencyKey), lines, approval);
+        return post(new Movement(TransactionType.CASH_WITHDRAWAL, account, null, drawer.branchId(), drawer.drawerId(),
+                amount, charge.amount(), account.currency(), narration, request.externalReference(), idempotencyKey),
+                lines, approval);
     }
 
     private MovementResponse transferBetween(TransferRequest request, String idempotencyKey,
@@ -326,7 +338,7 @@ public class TransactionService {
         lines.add(PostingLine.toLedgerAccount(to.ledgerAccountId(), EntryDirection.CREDIT, amount,
                 lineNarration(narration + " from " + from.accountNumber())));
         addCharge(lines, from, fromTerms, charge);
-        return post(new Movement(TransactionType.TRANSFER, from, to, from.branchId(), amount, charge.amount(),
+        return post(new Movement(TransactionType.TRANSFER, from, to, from.branchId(), null, amount, charge.amount(),
                 from.currency(), narration, request.externalReference(), idempotencyKey), lines, approval);
     }
 
@@ -356,7 +368,7 @@ public class TransactionService {
         FinancialTransaction transaction = transactions.saveAndFlush(new FinancialTransaction(transactionId,
                 tenantId, reference, movement.type(), TransactionChannel.BRANCH, movement.currency(),
                 movement.amount(), movement.fee(), idOf(movement.debit()), idOf(movement.credit()),
-                movement.branchId(), journal.id(), journal.businessDate(), journal.businessDate(),
+                movement.branchId(), movement.drawerId(), journal.id(), journal.businessDate(), journal.businessDate(),
                 movement.narration(), blankToNull(movement.externalReference()), movement.idempotencyKey(),
                 initiatedBy, approval == null ? null : approval.approvedBy(),
                 approval == null ? null : approval.requestId(), clock.instant()));
@@ -409,18 +421,23 @@ public class TransactionService {
         return amount;
     }
 
+    private static void requireDrawerCurrency(CashDrawerRef drawer, PostingAccount account) {
+        if (!drawer.currency().equals(account.currency())) {
+            throw new BankingException(TellerErrorCode.CURRENCY_MISMATCH,
+                    "Drawer " + drawer.code() + " holds " + drawer.currency() + "; the account is in "
+                            + account.currency() + ".");
+        }
+    }
+
     /**
-     * The branch whose cash moves: in the caller's scope and active.
+     * The drawer must hold the cash to pay out (the database would refuse too: drawers never go below zero).
      */
-    private UUID cashBranch(UUID requested, PostingAccount account) {
-        UUID branchId = requested != null ? requested : account.branchId();
-        if (!CurrentActor.require().branchScope().permits(branchId)) {
-            throw new ResourceNotFoundException("Branch");
+    private void requireDrawerCash(CashDrawerRef drawer, BigDecimal amount) {
+        BigDecimal held = ledgerAccounts.balance(drawer.ledgerAccountId()).availableBalance();
+        if (held.compareTo(amount) < 0) {
+            throw new BankingException(TellerErrorCode.CASH_INSUFFICIENT,
+                    "Drawer " + drawer.code() + " holds only " + held.toPlainString() + ". Ask for cash from the vault.");
         }
-        if (!branchService.getForInternalUse(branchId).isActive()) {
-            throw new BankingException(TransactionErrorCode.CASH_BRANCH_NOT_AVAILABLE);
-        }
-        return branchId;
     }
 
     private Charge charge(ProductTerms terms, ChargeEvent event, BigDecimal amount) {

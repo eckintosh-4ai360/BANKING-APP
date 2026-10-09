@@ -7,13 +7,11 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * Cash paid out at a branch from an account. Any withdrawal charge of the product is taken on top of the amount.
- *
- * @param branchId the branch whose cash pays out; defaults to the account's branch
+ * Cash paid out by a teller from an account, from the drawer of the teller's open session. Any withdrawal charge
+ * of the product is taken on top of the amount.
  */
 public record CashWithdrawalRequest(
         @NotNull UUID accountId,
-        UUID branchId,
         @NotNull @DecimalMin(value = "0", inclusive = false) BigDecimal amount,
         @Size(max = 200) String narration,
         @Size(max = 60) String externalReference) {

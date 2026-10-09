@@ -97,6 +97,9 @@ public class FinancialTransaction implements Persistable<UUID> {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    @Column(name = "cash_drawer_id", updatable = false)
+    private UUID cashDrawerId;
+
     @Column(name = "approved_by", updatable = false)
     private UUID approvedBy;
 
@@ -122,8 +125,8 @@ public class FinancialTransaction implements Persistable<UUID> {
     @SuppressWarnings("java:S107")
     public FinancialTransaction(UUID id, UUID tenantId, String reference, TransactionType transactionType,
                                 TransactionChannel channel, String currency, BigDecimal amount, BigDecimal feeAmount,
-                                UUID debitAccountId, UUID creditAccountId, UUID branchId, UUID journalEntryId,
-                                LocalDate businessDate, LocalDate valueDate, String narration,
+                                UUID debitAccountId, UUID creditAccountId, UUID branchId, UUID cashDrawerId,
+                                UUID journalEntryId, LocalDate businessDate, LocalDate valueDate, String narration,
                                 String externalReference, String idempotencyKey, UUID initiatedBy, UUID approvedBy,
                                 UUID approvalRequestId, Instant createdAt) {
         this.id = id;
@@ -138,6 +141,7 @@ public class FinancialTransaction implements Persistable<UUID> {
         this.debitAccountId = debitAccountId;
         this.creditAccountId = creditAccountId;
         this.branchId = branchId;
+        this.cashDrawerId = cashDrawerId;
         this.journalEntryId = journalEntryId;
         this.businessDate = businessDate;
         this.valueDate = valueDate;
