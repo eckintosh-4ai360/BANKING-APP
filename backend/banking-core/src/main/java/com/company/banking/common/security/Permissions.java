@@ -64,6 +64,7 @@ public final class Permissions {
     public static final String LOAN_APPROVE = "loan.approve";
     public static final String LOAN_DISBURSE = "loan.disburse";
     public static final String LOAN_WRITEOFF = "loan.writeoff";
+    public static final String LOAN_REPAY = "loan.repay";
     public static final String REPORT_VIEW = "report.view";
     public static final String REPORT_EXPORT = "report.export";
     public static final String COMPLIANCE_VIEW = "compliance.view";

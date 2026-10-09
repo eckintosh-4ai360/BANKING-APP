@@ -48,6 +48,7 @@ public final class DefaultRoleCatalog {
                 Permissions.PRODUCT_VIEW, Permissions.ACCOUNT_VIEW, Permissions.ACCOUNT_CREATE,
                 Permissions.ACCOUNT_FREEZE, Permissions.ACCOUNT_CLOSE, Permissions.TRANSACTION_VIEW,
                 Permissions.TRANSACTION_REVERSE, Permissions.LOAN_VIEW, Permissions.LOAN_APPROVE,
+                Permissions.LOAN_DISBURSE, Permissions.LOAN_REPAY,
                 Permissions.APPROVAL_VIEW, Permissions.APPROVAL_ACT, Permissions.TELLER_SUPERVISE,
                 Permissions.CASH_VIEW, Permissions.CASH_MANAGE, Permissions.COLLECTION_VIEW, Permissions.FIELD_MANAGE,
                 Permissions.SUSU_VIEW, Permissions.SUSU_MANAGE,
@@ -55,7 +56,8 @@ public final class DefaultRoleCatalog {
         add(templates, TELLER, "Teller",
                 "Receives deposits, pays withdrawals and balances the teller drawer",
                 Permissions.CUSTOMER_VIEW, Permissions.ACCOUNT_VIEW, Permissions.TRANSACTION_VIEW,
-                Permissions.TRANSACTION_CREATE, Permissions.TELLER_OPERATE, Permissions.CASH_VIEW);
+                Permissions.TRANSACTION_CREATE, Permissions.TELLER_OPERATE, Permissions.CASH_VIEW,
+                Permissions.LOAN_VIEW, Permissions.LOAN_REPAY);
         add(templates, LOAN_OFFICER, "Loan Officer",
                 "Originates, assesses and monitors loans",
                 Permissions.CUSTOMER_VIEW, Permissions.CUSTOMER_CREATE, Permissions.CUSTOMER_EDIT,
