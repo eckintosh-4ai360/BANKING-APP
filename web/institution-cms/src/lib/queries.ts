@@ -1,6 +1,6 @@
 'use client';
 
-import { bff, Permission, query, type Branch, type KycTier, type Page, type Product, type Role } from '@banking/api';
+import { bff, Permission, query, type Branch, type KycTier, type Page, type Product, type Role, type StaffSummary } from '@banking/api';
 import { useQuery } from '@tanstack/react-query';
 import { useCan } from './me';
 
@@ -86,4 +86,22 @@ export function useCount(path: string, params: Record<string, string>, enabled: 
     enabled,
     select: (page) => page.totalItems,
   });
+}
+
+/** Staff names for showing who did what (ids only when the user may not list staff). */
+export function useStaffNames() {
+  const allowed = useCan(Permission.staffView);
+  const result = useQuery({
+    queryKey: ['staff', 'names'],
+    queryFn: ({ signal }) => bff<Page<StaffSummary>>(`/staff${query({ size: 100 })}`, { signal }),
+    enabled: allowed,
+    staleTime: 5 * 60_000,
+  });
+  return (id: string | null | undefined) => {
+    if (!id) {
+      return '—';
+    }
+    const staff = result.data?.items.find((candidate) => candidate.id === id);
+    return staff ? `${staff.firstName} ${staff.lastName}` : `Staff ${id.slice(-6)}`;
+  };
 }
