@@ -38,6 +38,61 @@ public class LedgerReportRepository {
     private final JdbcClient jdbc;
 
     /**
+     * Writes the closing position of every GL account, branch and currency for a business date, starting from each
+     * one's latest earlier snapshot (so a day only reads the entries since then). One statement: it either writes
+     * the whole day or nothing, and a second call for the same day writes nothing.
+     *
+     * @return rows written
+     */
+    public int snapshotGlBalances(UUID tenantId, LocalDate businessDate) {
+        return jdbc.sql("""
+                        WITH last AS (
+                            SELECT DISTINCT ON (chart_of_account_id, branch_id, currency)
+                                   chart_of_account_id, branch_id, currency, business_date AS snapshot_date,
+                                   closing_balance
+                            FROM core.gl_balance_snapshot
+                            WHERE tenant_id = :tenantId AND business_date < :date
+                            ORDER BY chart_of_account_id, branch_id, currency, business_date DESC),
+                        moves AS (
+                            SELECT e.chart_of_account_id, e.branch_id, e.currency,
+                                   coalesce(sum(CASE WHEN e.direction = 'D' THEN e.amount ELSE -e.amount END)
+                                            FILTER (WHERE e.business_date < :date), 0) AS before_net,
+                                   coalesce(sum(e.amount) FILTER (WHERE e.business_date = :date
+                                                                    AND e.direction = 'D'), 0) AS debits,
+                                   coalesce(sum(e.amount) FILTER (WHERE e.business_date = :date
+                                                                    AND e.direction = 'C'), 0) AS credits
+                            FROM core.ledger_entry e
+                            LEFT JOIN last l ON l.chart_of_account_id = e.chart_of_account_id
+                                AND l.branch_id = e.branch_id AND l.currency = e.currency
+                            WHERE e.tenant_id = :tenantId AND e.business_date <= :date
+                              AND (l.snapshot_date IS NULL OR e.business_date > l.snapshot_date)
+                            GROUP BY e.chart_of_account_id, e.branch_id, e.currency),
+                        keyed AS (
+                            SELECT chart_of_account_id, branch_id, currency FROM last
+                            UNION
+                            SELECT chart_of_account_id, branch_id, currency FROM moves),
+                        computed AS (
+                            SELECT k.chart_of_account_id, k.branch_id, k.currency,
+                                   coalesce(l.closing_balance, 0) + coalesce(m.before_net, 0) AS opening,
+                                   coalesce(m.debits, 0) AS debits, coalesce(m.credits, 0) AS credits
+                            FROM keyed k
+                            LEFT JOIN last l ON l.chart_of_account_id = k.chart_of_account_id
+                                AND l.branch_id = k.branch_id AND l.currency = k.currency
+                            LEFT JOIN moves m ON m.chart_of_account_id = k.chart_of_account_id
+                                AND m.branch_id = k.branch_id AND m.currency = k.currency)
+                        INSERT INTO core.gl_balance_snapshot (tenant_id, business_date, chart_of_account_id, branch_id,
+                                                              currency, opening_balance, debits, credits,
+                                                              closing_balance)
+                        SELECT :tenantId, :date, chart_of_account_id, branch_id, currency, opening, debits, credits,
+                               opening + debits - credits
+                        FROM computed
+                        ON CONFLICT DO NOTHING""")
+                .param("tenantId", uuid(tenantId))
+                .param("date", date(businessDate))
+                .update();
+    }
+
+    /**
      * Entries of a sub-ledger account between two business dates, in posting order; at most {@code limit} rows.
      */
     public List<StatementEntry> accountEntries(UUID tenantId, UUID ledgerAccountId, LocalDate from, LocalDate to,
