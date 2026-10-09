@@ -1,6 +1,6 @@
 'use client';
 
-import { ApiError, bff, query, type Drawer, type TellerSession } from '@banking/api';
+import { ApiError, bff, newIdempotencyKey, query, type CollectorRemittance, type Drawer, type TellerSession } from '@banking/api';
 import { errorMessage } from '@banking/console';
 import {
   Alert,
@@ -12,6 +12,7 @@ import {
   CardTitle,
   DetailList,
   FormField,
+  Input,
   Modal,
   Money,
   PageHeader,
@@ -27,8 +28,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
 import { CountFields } from '@/components/cash/count-fields';
+import { officerName, useFieldOfficers } from '@/components/field/officers-panel';
 import { isValidCount, toCashCount, type CountInput } from '@/lib/cash';
 import { useMe } from '@/lib/me';
+import { AMOUNT } from '@/lib/schemas';
 
 /**
  * The signed-in teller's till: open it on a drawer, see the cash it should hold, and close it with a blind count.
@@ -121,6 +124,7 @@ function OpenTill() {
 
 function OpenSession({ session }: { session: TellerSession }) {
   const [closing, setClosing] = useState(false);
+  const [receiving, setReceiving] = useState(false);
   const money = (amount: string | null) => (amount === null ? '—' : <Money amount={amount} currency={session.currency} />);
 
   return (
@@ -137,7 +141,12 @@ function OpenSession({ session }: { session: TellerSession }) {
               Take deposits and pay withdrawals from the <Link className="underline" href="/accounts">account screens</Link>. When you finish, close
               the till with a full count.
             </p>
-            <Button onClick={() => setClosing(true)}>Count and close</Button>
+            <span className="flex gap-2">
+              <Button variant="outline" onClick={() => setReceiving(true)}>
+                Receive field cash
+              </Button>
+              <Button onClick={() => setClosing(true)}>Count and close</Button>
+            </span>
           </CardContent>
         </Card>
       ) : (
@@ -147,7 +156,96 @@ function OpenSession({ session }: { session: TellerSession }) {
         </Alert>
       )}
       {closing ? <CloseDialog session={session} onClose={() => setClosing(false)} /> : null}
+      {receiving ? <RemittanceDialog session={session} onClose={() => setReceiving(false)} /> : null}
     </div>
+  );
+}
+
+/**
+ * A field officer hands over the cash they collected: the teller counts it and records the amount, which moves
+ * from the officer's cash with collectors into this drawer. One idempotency key per dialog, so a retry never takes
+ * the cash twice.
+ */
+function RemittanceDialog({ session, onClose }: { session: TellerSession; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const me = useMe();
+  const [idempotencyKey] = useState(newIdempotencyKey);
+  const officers = useFieldOfficers();
+  const [officerId, setOfficerId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+  const [result, setResult] = useState<CollectorRemittance | null>(null);
+  const officer = officers.data?.find((candidate) => candidate.staffId === officerId);
+  const amountValid = AMOUNT.test(amount) && /[1-9]/.test(amount);
+  const remit = useMutation({
+    mutationFn: () =>
+      bff<CollectorRemittance>('/field/remittances', { body: { officerId, amount, note: note.trim() || undefined }, idempotencyKey }),
+    onSuccess: (received) => {
+      setResult(received);
+      void queryClient.invalidateQueries({ queryKey: ['teller-session'] });
+      void queryClient.invalidateQueries({ queryKey: ['field'] });
+    },
+  });
+
+  if (result) {
+    return (
+      <Modal open onClose={onClose} title="Cash received" footer={<Button onClick={onClose}>Done</Button>}>
+        <DetailList
+          items={[
+            { label: 'Reference', value: result.reference },
+            { label: 'Received', value: <Money amount={result.amount} currency={result.currency} /> },
+            { label: 'Officer still carries', value: result.officerCashAfter ? <Money amount={result.officerCashAfter} currency={result.currency} /> : null },
+          ]}
+        />
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      busy={remit.isPending}
+      title="Receive cash from a field officer"
+      description={`Count the cash first. It goes into drawer ${session.drawerCode}.`}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose} disabled={remit.isPending}>
+            Cancel
+          </Button>
+          <Button onClick={() => remit.mutate()} disabled={!officerId || !amountValid} loading={remit.isPending}>
+            Receive cash
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-4">
+        {remit.isError ? <Alert tone="danger">{errorMessage(remit.error)}</Alert> : null}
+        <FormField label="Field officer" required>
+          {(control) => (
+            <Select {...control} value={officerId} onChange={(event) => setOfficerId(event.target.value)}>
+              <option value="">Choose</option>
+              {officers.data?.filter((candidate) => candidate.staffId !== me.id && candidate.currency === session.currency).map((candidate) => (
+                <option key={candidate.staffId} value={candidate.staffId}>
+                  {officerName(candidate)}
+                </option>
+              ))}
+            </Select>
+          )}
+        </FormField>
+        {officer ? (
+          <p className="text-sm text-muted-foreground">
+            The officer carries <Money amount={officer.cashBalance} currency={officer.currency} /> by the ledger.
+          </p>
+        ) : null}
+        <FormField label={`Amount counted (${session.currency})`} required error={amount && !amountValid ? 'Enter an amount such as 1250.00' : undefined}>
+          {(control) => <Input {...control} inputMode="decimal" autoComplete="off" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value.trim())} />}
+        </FormField>
+        <FormField label="Note">
+          {(control) => <Textarea {...control} maxLength={300} value={note} onChange={(event) => setNote(event.target.value)} />}
+        </FormField>
+      </div>
+    </Modal>
   );
 }
 
