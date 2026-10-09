@@ -103,6 +103,20 @@ public class LedgerAccountService {
     }
 
     /**
+     * The account's balance at the end of a business date, from its entries (not the live projection, which may
+     * already include later postings), in its normal-side terms. Exact (4 decimals).
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal balanceAt(UUID ledgerAccountId, LocalDate date) {
+        LedgerAccount account = load(ledgerAccountId);
+        LedgerReportRepository.GlTotals totals = reports.accountTotalsBefore(TenantContext.requireTenantId(),
+                ledgerAccountId, date.plusDays(1));
+        return account.getNormalSide().increasingDirection() == EntryDirection.CREDIT
+                ? totals.credits().subtract(totals.debits())
+                : totals.debits().subtract(totals.credits());
+    }
+
+    /**
      * The account's entries between two business dates with running balances (for statements). The caller checks
      * that the reader may see the account.
      *
