@@ -70,6 +70,15 @@ public final class TenantContext {
         });
     }
 
+    /**
+     * Wraps work handed to another thread so it runs for the <b>current</b> tenant (never another one). Used for
+     * background work started by a request, e.g. an end-of-day run.
+     */
+    public static Runnable propagating(Runnable work) {
+        UUID tenantId = requireTenantId();
+        return () -> runAs(tenantId, work);
+    }
+
     private static void set(UUID tenantId) {
         if (tenantId == null) {
             CURRENT.remove();
