@@ -1,6 +1,8 @@
 import { hasAny, Permission } from '@banking/api';
 import {
+  Banknote,
   Building2,
+  CalendarClock,
   ClipboardCheck,
   FileCheck,
   KeyRound,
@@ -11,6 +13,7 @@ import {
   ShieldCheck,
   UserCog,
   Users,
+  Vault,
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
@@ -43,6 +46,14 @@ export const NAVIGATION: NavGroup[] = [
       { href: '/accounts', label: 'Accounts', icon: Wallet, requires: [Permission.accountView] },
       { href: '/approvals', label: 'Approvals', icon: ClipboardCheck, requires: [Permission.approvalView] },
       { href: '/products', label: 'Products', icon: Package, requires: [Permission.productView, Permission.productManage] },
+    ],
+  },
+  {
+    title: 'Branch operations',
+    entries: [
+      { href: '/teller', label: 'My till', icon: Banknote, requires: [Permission.tellerOperate] },
+      { href: '/cash', label: 'Cash', icon: Vault, requires: [Permission.cashView, Permission.cashManage, Permission.tellerSupervise] },
+      { href: '/operations', label: 'End of day', icon: CalendarClock, requires: [Permission.operationsView, Permission.operationsManage] },
     ],
   },
   {
