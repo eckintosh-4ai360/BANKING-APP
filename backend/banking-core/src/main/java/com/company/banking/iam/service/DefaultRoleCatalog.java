@@ -49,7 +49,8 @@ public final class DefaultRoleCatalog {
                 Permissions.ACCOUNT_FREEZE, Permissions.ACCOUNT_CLOSE, Permissions.TRANSACTION_VIEW,
                 Permissions.TRANSACTION_REVERSE, Permissions.LOAN_VIEW, Permissions.LOAN_APPROVE,
                 Permissions.APPROVAL_VIEW, Permissions.APPROVAL_ACT, Permissions.TELLER_SUPERVISE,
-                Permissions.CASH_VIEW, Permissions.CASH_MANAGE, Permissions.COLLECTION_VIEW,
+                Permissions.CASH_VIEW, Permissions.CASH_MANAGE, Permissions.COLLECTION_VIEW, Permissions.FIELD_MANAGE,
+                Permissions.SUSU_VIEW, Permissions.SUSU_MANAGE,
                 Permissions.REPORT_VIEW, Permissions.REPORT_EXPORT, Permissions.OPERATIONS_VIEW);
         add(templates, TELLER, "Teller",
                 "Receives deposits, pays withdrawals and balances the teller drawer",

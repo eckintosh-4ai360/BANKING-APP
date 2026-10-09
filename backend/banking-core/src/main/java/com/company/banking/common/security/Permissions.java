@@ -54,6 +54,9 @@ public final class Permissions {
     public static final String CASH_MANAGE = "cash.manage";
     public static final String COLLECTION_VIEW = "collection.view";
     public static final String COLLECTION_CREATE = "collection.create";
+    public static final String FIELD_MANAGE = "field.manage";
+    public static final String SUSU_VIEW = "susu.view";
+    public static final String SUSU_MANAGE = "susu.manage";
     public static final String LOAN_VIEW = "loan.view";
     public static final String LOAN_CREATE = "loan.create";
     public static final String LOAN_ASSESS = "loan.assess";
