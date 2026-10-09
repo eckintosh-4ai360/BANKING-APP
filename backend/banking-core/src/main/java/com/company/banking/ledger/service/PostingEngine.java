@@ -102,7 +102,8 @@ public class PostingEngine {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public PostedJournal post(PostingRequest request) {
-        return post(request, CurrentActor.currentActorId().orElse(null), request.approvedBy());
+        return post(request, CurrentActor.currentActorId().orElse(null), request.approvedBy(),
+                businessDates.forPosting());
     }
 
     /**
@@ -111,13 +112,26 @@ public class PostingEngine {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public PostedJournal postApproved(PostingRequest request, UUID makerId) {
-        return post(request, makerId, requireChecker());
+        return post(request, makerId, requireChecker(), businessDates.forPosting());
     }
 
-    private PostedJournal post(PostingRequest request, UUID postedBy, UUID approvedBy) {
+    /**
+     * Posts an end-of-day journal (source {@code EOD}) on the business date being closed, which is the date before
+     * the current one. Only end-of-day work posts this way: the day's interest and other charges belong to the day
+     * they were earned, while branches already work on the next date.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public PostedJournal postForClosedDate(PostingRequest request, LocalDate closedDate) {
+        if (request.source() != JournalSource.EOD) {
+            throw new BankingException(LedgerErrorCode.INVALID_POSTING, "Only end-of-day journals post on a closed date.");
+        }
+        return post(request, CurrentActor.currentActorId().orElse(null), null,
+                businessDates.forEndOfDayPosting(closedDate));
+    }
+
+    private PostedJournal post(PostingRequest request, UUID postedBy, UUID approvedBy, LocalDate businessDate) {
         UUID tenantId = TenantContext.requireTenantId();
         requireValidHeader(request);
-        LocalDate businessDate = businessDates.today();
         LocalDate valueDate = request.valueDate() == null ? businessDate : request.valueDate();
         if (valueDate.isAfter(businessDate)) {
             throw new BankingException(LedgerErrorCode.INVALID_POSTING, "The value date cannot be in the future.");
@@ -186,7 +200,7 @@ public class PostingEngine {
             mirror.add(new Line(gl.id(), gl.code(), line.ledgerAccountId(), side, line.branchId(), line.currency(),
                     EntryDirection.fromCode(line.direction()).opposite(), line.amount(), line.narration()));
         }
-        LocalDate businessDate = businessDates.today();
+        LocalDate businessDate = businessDates.forPosting();
         PostedJournal reversal = write(tenantId, JournalSource.REVERSAL, original.sourceReference(),
                 request.financialTransactionId(), original.id(), original.branchId(), businessDate, businessDate,
                 "Reversal of " + original.journalNumber() + ": " + request.reason().trim(), postedBy, approvedBy,
