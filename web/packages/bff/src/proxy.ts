@@ -20,7 +20,7 @@ const SEGMENT = /^[A-Za-z0-9_~-][A-Za-z0-9._~-]*$/;
 const METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9_-]{8,100}$/;
 const BODY_TYPES = ['application/json', 'multipart/form-data'];
-const PASSED_RESPONSE_HEADERS = ['content-type', 'content-disposition', 'x-correlation-id', 'retry-after'];
+const PASSED_RESPONSE_HEADERS = ['content-type', 'content-disposition', 'x-correlation-id', 'retry-after', 'idempotency-replayed'];
 
 export interface ProxyDependencies {
   config: BffConfig;
