@@ -7,6 +7,8 @@ import '../features/auth/mfa_screen.dart';
 import '../features/auth/password_change_screen.dart';
 import '../features/auth/setup_required_screen.dart';
 import '../features/auth/sign_in_screen.dart';
+import '../features/collections/customer_screen.dart';
+import '../features/collections/queue_screen.dart';
 import '../features/home/home_screen.dart';
 
 abstract final class Routes {
@@ -16,6 +18,9 @@ abstract final class Routes {
   static const passwordChange = '/setup/password';
   static const mfaSetup = '/setup/mfa';
   static const home = '/home';
+  static const queue = '/home/queue';
+
+  static String customer(String customerId) => '/home/customers/$customerId';
 }
 
 /// Where the session state allows the user to be. Signed-in users may go anywhere under /home; everyone else is
@@ -42,6 +47,13 @@ GoRouter createRouter(SessionController session) => GoRouter(
         GoRoute(path: Routes.mfa, builder: (_, _) => const MfaScreen()),
         GoRoute(path: Routes.passwordChange, builder: (_, _) => const PasswordChangeScreen()),
         GoRoute(path: Routes.mfaSetup, builder: (_, _) => const SetupRequiredScreen()),
-        GoRoute(path: Routes.home, builder: (_, _) => const HomeScreen()),
+        GoRoute(
+          path: Routes.home,
+          builder: (_, _) => const HomeScreen(),
+          routes: [
+            GoRoute(path: 'queue', builder: (_, _) => const QueueScreen()),
+            GoRoute(path: 'customers/:id', builder: (_, state) => CustomerScreen(customerId: state.pathParameters['id']!)),
+          ],
+        ),
       ],
     );
