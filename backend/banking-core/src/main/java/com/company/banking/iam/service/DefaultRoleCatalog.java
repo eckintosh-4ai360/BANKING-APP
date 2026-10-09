@@ -38,7 +38,8 @@ public final class DefaultRoleCatalog {
                 Permissions.STAFF_VIEW, Permissions.STAFF_CREATE, Permissions.STAFF_EDIT, Permissions.STAFF_DISABLE,
                 Permissions.STAFF_UNLOCK, Permissions.ROLE_VIEW, Permissions.ROLE_MANAGE, Permissions.ROLE_ASSIGN,
                 Permissions.PERMISSION_VIEW, Permissions.AUDIT_VIEW, Permissions.PRODUCT_VIEW,
-                Permissions.PRODUCT_MANAGE, Permissions.REPORT_VIEW, Permissions.CUSTOMER_VIEW);
+                Permissions.PRODUCT_MANAGE, Permissions.REPORT_VIEW, Permissions.CUSTOMER_VIEW,
+                Permissions.OPERATIONS_VIEW, Permissions.OPERATIONS_MANAGE);
         add(templates, BRANCH_MANAGER, "Branch Manager",
                 "Runs branch operations, approves within limits and supervises tellers",
                 Permissions.INSTITUTION_VIEW, Permissions.BRANCH_VIEW, Permissions.STAFF_VIEW,
@@ -49,7 +50,7 @@ public final class DefaultRoleCatalog {
                 Permissions.TRANSACTION_REVERSE, Permissions.LOAN_VIEW, Permissions.LOAN_APPROVE,
                 Permissions.APPROVAL_VIEW, Permissions.APPROVAL_ACT, Permissions.TELLER_SUPERVISE,
                 Permissions.CASH_VIEW, Permissions.CASH_MANAGE, Permissions.COLLECTION_VIEW,
-                Permissions.REPORT_VIEW, Permissions.REPORT_EXPORT);
+                Permissions.REPORT_VIEW, Permissions.REPORT_EXPORT, Permissions.OPERATIONS_VIEW);
         add(templates, TELLER, "Teller",
                 "Receives deposits, pays withdrawals and balances the teller drawer",
                 Permissions.CUSTOMER_VIEW, Permissions.ACCOUNT_VIEW, Permissions.TRANSACTION_VIEW,
@@ -77,7 +78,7 @@ public final class DefaultRoleCatalog {
                 Permissions.BRANCH_VIEW, Permissions.PRODUCT_VIEW, Permissions.ACCOUNT_VIEW,
                 Permissions.TRANSACTION_VIEW, Permissions.LEDGER_VIEW, Permissions.LEDGER_POST,
                 Permissions.APPROVAL_VIEW, Permissions.APPROVAL_ACT, Permissions.REPORT_VIEW,
-                Permissions.REPORT_EXPORT);
+                Permissions.REPORT_EXPORT, Permissions.OPERATIONS_VIEW);
         add(templates, AUDITOR, "Auditor",
                 "Read-only access to records, ledger, approvals and audit trail",
                 Permissions.INSTITUTION_VIEW, Permissions.SETTINGS_VIEW, Permissions.BRANCH_VIEW,
@@ -86,7 +87,7 @@ public final class DefaultRoleCatalog {
                 Permissions.ACCOUNT_VIEW, Permissions.TRANSACTION_VIEW, Permissions.LEDGER_VIEW,
                 Permissions.APPROVAL_VIEW, Permissions.CASH_VIEW, Permissions.COLLECTION_VIEW,
                 Permissions.LOAN_VIEW, Permissions.COMPLIANCE_VIEW, Permissions.FRAUD_VIEW,
-                Permissions.REPORT_VIEW, Permissions.REPORT_EXPORT);
+                Permissions.REPORT_VIEW, Permissions.REPORT_EXPORT, Permissions.OPERATIONS_VIEW);
         return templates;
     }
 

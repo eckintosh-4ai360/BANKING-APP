@@ -67,6 +67,8 @@ public final class Permissions {
     public static final String COMPLIANCE_MANAGE = "compliance.manage";
     public static final String FRAUD_VIEW = "fraud.view";
     public static final String FRAUD_MANAGE = "fraud.manage";
+    public static final String OPERATIONS_VIEW = "operations.view";
+    public static final String OPERATIONS_MANAGE = "operations.manage";
 
     public static final String PLATFORM_TENANT_VIEW = "platform.tenant.view";
     public static final String PLATFORM_TENANT_MANAGE = "platform.tenant.manage";
