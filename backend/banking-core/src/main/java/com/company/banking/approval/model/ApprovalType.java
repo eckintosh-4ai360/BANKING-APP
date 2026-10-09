@@ -10,7 +10,9 @@ public enum ApprovalType {
     TRANSACTION_REVERSAL(Permissions.TRANSACTION_REVERSE),
     MANUAL_JOURNAL(Permissions.LEDGER_POST),
     CASH_WITHDRAWAL(Permissions.APPROVAL_ACT),
-    TRANSFER(Permissions.APPROVAL_ACT);
+    TRANSFER(Permissions.APPROVAL_ACT),
+    LOAN_RESTRUCTURE(Permissions.LOAN_APPROVE),
+    LOAN_WRITE_OFF(Permissions.LOAN_WRITEOFF);
 
     private final String checkerPermission;
 
