@@ -48,7 +48,8 @@ public final class DefaultRoleCatalog {
                 Permissions.PRODUCT_VIEW, Permissions.ACCOUNT_VIEW, Permissions.ACCOUNT_CREATE,
                 Permissions.ACCOUNT_FREEZE, Permissions.ACCOUNT_CLOSE, Permissions.TRANSACTION_VIEW,
                 Permissions.TRANSACTION_REVERSE, Permissions.LOAN_VIEW, Permissions.LOAN_APPROVE,
-                Permissions.LOAN_DISBURSE, Permissions.LOAN_REPAY,
+                Permissions.LOAN_DISBURSE, Permissions.LOAN_REPAY, Permissions.LOAN_COLLECT,
+                Permissions.LOAN_RESTRUCTURE, Permissions.LOAN_WRITEOFF,
                 Permissions.APPROVAL_VIEW, Permissions.APPROVAL_ACT, Permissions.TELLER_SUPERVISE,
                 Permissions.CASH_VIEW, Permissions.CASH_MANAGE, Permissions.COLLECTION_VIEW, Permissions.FIELD_MANAGE,
                 Permissions.SUSU_VIEW, Permissions.SUSU_MANAGE,
@@ -63,11 +64,12 @@ public final class DefaultRoleCatalog {
                 Permissions.CUSTOMER_VIEW, Permissions.CUSTOMER_CREATE, Permissions.CUSTOMER_EDIT,
                 Permissions.KYC_VIEW, Permissions.PRODUCT_VIEW, Permissions.ACCOUNT_VIEW, Permissions.LOAN_VIEW,
                 Permissions.LOAN_CREATE, Permissions.LOAN_ASSESS, Permissions.LOAN_RECOMMEND,
-                Permissions.COLLECTION_VIEW, Permissions.REPORT_VIEW);
+                Permissions.LOAN_COLLECT, Permissions.LOAN_RESTRUCTURE, Permissions.COLLECTION_VIEW,
+                Permissions.REPORT_VIEW);
         add(templates, FIELD_OFFICER, "Field Officer",
                 "Registers customers and records field collections and visits",
                 Permissions.CUSTOMER_VIEW, Permissions.CUSTOMER_CREATE, Permissions.KYC_VIEW,
-                Permissions.ACCOUNT_VIEW, Permissions.LOAN_VIEW, Permissions.COLLECTION_VIEW,
+                Permissions.ACCOUNT_VIEW, Permissions.LOAN_VIEW, Permissions.LOAN_COLLECT, Permissions.COLLECTION_VIEW,
                 Permissions.COLLECTION_CREATE);
         add(templates, COMPLIANCE_OFFICER, "Compliance Officer",
                 "Reviews KYC, AML and fraud alerts and manages compliance cases",
