@@ -901,3 +901,194 @@ export interface AuditVerificationReport {
   intact: boolean;
   problems: { sequenceNo: number; rangeStart: IsoDateTime; rangeEnd: IsoDateTime; code: AuditSealProblemCode; detail: string }[];
 }
+
+// ------------------------------------------------------------------------------------------- field operations
+
+export interface FieldOfficer {
+  staffId: Uuid;
+  firstName: string;
+  lastName: string;
+  branchId: Uuid;
+  currency: string;
+  status: 'ACTIVE' | 'SUSPENDED';
+  dailyTarget: Amount | null;
+  maxOfflineAmount: Amount;
+  maxOfflineHours: number;
+  /** Cash the officer carries now, from the ledger. */
+  cashBalance: Amount;
+  assignedCustomers: number;
+  openAlerts: number;
+  createdAt: IsoDateTime;
+  version: number;
+}
+
+/** The officer's cash: the ledger against collections minus remittances. */
+export interface OfficerCashPosition {
+  officerId: Uuid;
+  currency: string;
+  businessDate: IsoDate;
+  ledgerBalance: Amount;
+  collected: Amount;
+  remitted: Amount;
+  expected: Amount;
+  difference: Amount;
+  reconciled: boolean;
+  collectedToday: Amount;
+  remittedToday: Amount;
+}
+
+export interface CustomerAssignment {
+  id: Uuid;
+  customerId: Uuid;
+  customerNumber: string | null;
+  customerName: string | null;
+  officerId: Uuid;
+  assignedAt: IsoDateTime;
+  assignedBy: Uuid | null;
+  endedAt: IsoDateTime | null;
+  endReason: string | null;
+}
+
+export interface FieldDevice {
+  id: Uuid;
+  officerId: Uuid;
+  name: string;
+  lastSequenceNo: number;
+  registeredAt: IsoDateTime;
+  lastSyncedAt: IsoDateTime | null;
+  live: boolean;
+  revokedAt: IsoDateTime | null;
+  revokeReason: string | null;
+  version: number;
+}
+
+export interface FieldCollection {
+  id: Uuid;
+  clientReference: Uuid;
+  deviceId: Uuid;
+  sequenceNo: number;
+  officerId: Uuid;
+  customerId: Uuid;
+  targetType: 'SAVINGS_ACCOUNT' | 'SUSU_PLAN';
+  accountId: Uuid;
+  susuPlanId: Uuid | null;
+  amount: Amount;
+  currency: string;
+  collectedAt: IsoDateTime;
+  receivedAt: IsoDateTime;
+  status: 'POSTED' | 'REJECTED';
+  rejectionCode: string | null;
+  rejectionReason: string | null;
+  transactionId: Uuid | null;
+  businessDate: IsoDate | null;
+  latitude: string | null;
+  longitude: string | null;
+  note: string | null;
+}
+
+export interface CustomerVisit {
+  id: Uuid;
+  clientReference: Uuid;
+  officerId: Uuid;
+  customerId: Uuid;
+  purpose: string;
+  outcome: string;
+  notes: string | null;
+  visitedAt: IsoDateTime;
+  receivedAt: IsoDateTime;
+  latitude: string | null;
+  longitude: string | null;
+}
+
+export type FieldAlertType = 'SEQUENCE_GAP' | 'CONFLICT' | 'LATE_SYNC' | 'OFFLINE_LIMIT';
+
+export interface FieldAlert {
+  id: Uuid;
+  officerId: Uuid;
+  deviceId: Uuid | null;
+  alertType: FieldAlertType;
+  detail: string;
+  missingFrom: number | null;
+  missingTo: number | null;
+  clientReference: Uuid | null;
+  status: 'OPEN' | 'RESOLVED';
+  raisedAt: IsoDateTime;
+  resolvedAt: IsoDateTime | null;
+  resolvedBy: Uuid | null;
+  resolution: string | null;
+  version: number;
+}
+
+export interface CollectorRemittance {
+  id: Uuid;
+  reference: string;
+  officerId: Uuid;
+  tellerId: Uuid;
+  drawerId: Uuid;
+  drawerCode: string | null;
+  branchId: Uuid;
+  amount: Amount;
+  currency: string;
+  businessDate: IsoDate;
+  note: string | null;
+  createdAt: IsoDateTime;
+  /** What the officer still carries (only right after the remittance). */
+  officerCashAfter: Amount | null;
+}
+
+// ---------------------------------------------------------------------------------------------------- susu
+
+export interface SusuFrequency {
+  code: string;
+  name: string;
+  intervalUnit: 'DAY' | 'WEEK' | 'MONTH';
+  intervalCount: number;
+  active: boolean;
+}
+
+export type SusuPlanStatus = 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
+
+export interface SusuPlan {
+  id: Uuid;
+  planNumber: string;
+  customerId: Uuid;
+  accountId: Uuid;
+  branchId: Uuid;
+  frequencyCode: string;
+  contributionAmount: Amount;
+  currency: string;
+  cycleLength: number;
+  commissionContributions: number;
+  startDate: IsoDate;
+  endDate: IsoDate | null;
+  targetAmount: Amount | null;
+  status: SusuPlanStatus;
+  currentCycle: number;
+  paid: number;
+  missed: number;
+  arrears: Amount;
+  nextDue: IsoDate | null;
+  totalPaid: Amount;
+  createdAt: IsoDateTime;
+  closedAt: IsoDateTime | null;
+  closeReason: string | null;
+  version: number;
+}
+
+export interface SusuContribution {
+  sequenceNo: number;
+  cycleNo: number;
+  dueDate: IsoDate;
+  amount: Amount;
+  status: 'EXPECTED' | 'PAID' | 'MISSED' | 'WAIVED';
+  paidAt: IsoDateTime | null;
+  collectionId: Uuid | null;
+  transactionId: Uuid | null;
+  waiveReason: string | null;
+}
+
+export interface SusuPlanDetail {
+  plan: SusuPlan;
+  contributions: SusuContribution[];
+  commissions: { cycleNo: number; amountDue: Amount; amountCharged: Amount; businessDate: IsoDate }[];
+}
