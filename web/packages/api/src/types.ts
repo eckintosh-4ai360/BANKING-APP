@@ -471,3 +471,257 @@ export interface KycTier {
   active: boolean;
   version: number;
 }
+
+// ---------------------------------------------------------------------------------------- banking core (Phase 2)
+
+/** Exact decimal string from the backend, e.g. "1250.00". Never parse it into a JavaScript number. */
+export type Amount = string;
+
+export interface Currency {
+  code: string;
+  name: string;
+  minorUnits: number;
+}
+
+export type ProductType = 'SAVINGS' | 'CURRENT' | 'SUSU' | 'FIXED_DEPOSIT' | 'TARGET_SAVINGS';
+export type ChargeEvent = 'CASH_DEPOSIT' | 'CASH_WITHDRAWAL' | 'TRANSFER_OUT';
+
+export interface Charge {
+  event: ChargeEvent;
+  name: string;
+  calculation: 'FLAT' | 'PERCENT';
+  flatAmount: Amount | null;
+  rate: string | null;
+  minAmount: Amount | null;
+  maxAmount: Amount | null;
+}
+
+export interface ProductVersion {
+  id: Uuid;
+  versionNo: number;
+  status: 'DRAFT' | 'PUBLISHED' | 'RETIRED';
+  currency: string;
+  depositGlId: Uuid;
+  feeIncomeGlId: Uuid | null;
+  interestExpenseGlId: Uuid | null;
+  minOpeningBalance: Amount;
+  minOperatingBalance: Amount;
+  maxBalance: Amount | null;
+  interestRate: string;
+  interestCalcMethod: string;
+  interestPostingFrequency: string;
+  dayCount: string;
+  dormancyDays: number;
+  requiredKycTier: string | null;
+  allowOverdraft: boolean;
+  maxOverdraftLimit: Amount;
+  maxWithdrawalAmount: Amount | null;
+  dailyWithdrawalLimit: Amount | null;
+  createdAt: IsoDateTime;
+  publishedAt: IsoDateTime | null;
+  charges: Charge[];
+}
+
+export interface Product {
+  id: Uuid;
+  code: string;
+  name: string;
+  productType: ProductType;
+  description: string | null;
+  status: 'ACTIVE' | 'INACTIVE';
+  currentVersion: ProductVersion | null;
+  versions: ProductVersion[];
+  version: number;
+}
+
+/** Terms as sent to the backend; amounts stay strings. */
+export interface ProductTermsInput {
+  currency: string;
+  minOpeningBalance?: Amount;
+  minOperatingBalance?: Amount;
+  maxBalance?: Amount;
+  interestRate?: string;
+  dormancyDays?: number;
+  requiredKycTier?: string;
+  allowOverdraft: boolean;
+  maxWithdrawalAmount?: Amount;
+  dailyWithdrawalLimit?: Amount;
+  charges?: Charge[];
+}
+
+export type AccountStatus = 'PENDING' | 'ACTIVE' | 'RESTRICTED' | 'FROZEN' | 'DORMANT' | 'CLOSED';
+export type OwnershipType = 'SINGLE' | 'JOINT_ANY' | 'JOINT_ALL' | 'BUSINESS';
+
+export interface AccountSummary {
+  id: Uuid;
+  accountNumber: string;
+  title: string;
+  customerId: Uuid;
+  productCode: string;
+  productType: ProductType;
+  branchId: Uuid;
+  currency: string;
+  status: AccountStatus;
+  ledgerBalance: Amount;
+  availableBalance: Amount;
+  openedOn: IsoDate;
+}
+
+export interface AccountHolder {
+  customerId: Uuid;
+  customerNumber: string | null;
+  displayName: string | null;
+  role: 'PRIMARY' | 'JOINT' | 'SIGNATORY';
+}
+
+export interface Account {
+  id: Uuid;
+  accountNumber: string;
+  title: string;
+  customerId: Uuid;
+  productId: Uuid;
+  productCode: string;
+  productName: string;
+  productType: ProductType;
+  productVersionId: Uuid;
+  branchId: Uuid;
+  currency: string;
+  status: AccountStatus;
+  statusReason: string | null;
+  ownershipType: OwnershipType;
+  holders: AccountHolder[];
+  ledgerBalance: Amount;
+  holdAmount: Amount;
+  availableBalance: Amount;
+  overdraftLimit: Amount;
+  openedOn: IsoDate;
+  activatedAt: IsoDateTime | null;
+  closedOn: IsoDate | null;
+  lastActivityAt: IsoDateTime | null;
+  version: number;
+}
+
+export interface Hold {
+  id: Uuid;
+  accountId: Uuid;
+  amount: Amount;
+  currency: string;
+  holdType: 'LIEN' | 'PENDING_PAYMENT' | 'LEGAL' | 'FRAUD_REVIEW' | 'LOAN_COLLATERAL';
+  status: 'ACTIVE' | 'RELEASED' | 'CONSUMED' | 'EXPIRED';
+  reason: string;
+  reference: string | null;
+  expiresAt: IsoDateTime | null;
+  placedAt: IsoDateTime;
+  placedBy: Uuid | null;
+  releasedAt: IsoDateTime | null;
+  releasedBy: Uuid | null;
+  releaseReason: string | null;
+  version: number;
+}
+
+export type TransactionType = 'CASH_DEPOSIT' | 'CASH_WITHDRAWAL' | 'TRANSFER';
+
+export interface Transaction {
+  id: Uuid;
+  reference: string;
+  transactionType: TransactionType;
+  status: 'POSTED' | 'REVERSED';
+  channel: string;
+  currency: string;
+  amount: Amount;
+  feeAmount: Amount;
+  debitAccountId: Uuid | null;
+  debitAccountNumber: string | null;
+  creditAccountId: Uuid | null;
+  creditAccountNumber: string | null;
+  branchId: Uuid;
+  journalEntryId: Uuid;
+  businessDate: IsoDate;
+  valueDate: IsoDate;
+  narration: string | null;
+  externalReference: string | null;
+  initiatedBy: Uuid | null;
+  approvedBy: Uuid | null;
+  approvalRequestId: Uuid | null;
+  createdAt: IsoDateTime;
+  reversedAt: IsoDateTime | null;
+  reversedBy: Uuid | null;
+  reversalJournalEntryId: Uuid | null;
+  reversalReason: string | null;
+}
+
+export type ApprovalType = 'TRANSACTION_REVERSAL' | 'MANUAL_JOURNAL' | 'CASH_WITHDRAWAL' | 'TRANSFER';
+export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+
+export interface Approval {
+  id: Uuid;
+  requestType: ApprovalType;
+  status: ApprovalStatus;
+  branchId: Uuid;
+  amount: Amount | null;
+  currency: string | null;
+  resourceType: string | null;
+  resourceId: Uuid | null;
+  summary: string;
+  payload: unknown;
+  requestedBy: Uuid;
+  requestedAt: IsoDateTime;
+  decidedBy: Uuid | null;
+  decidedAt: IsoDateTime | null;
+  decisionNote: string | null;
+  resultResourceId: Uuid | null;
+  version: number;
+}
+
+export interface ApprovalPolicy {
+  requestType: 'CASH_WITHDRAWAL' | 'TRANSFER';
+  currency: string;
+  thresholdAmount: Amount;
+  active: boolean;
+  updatedAt: IsoDateTime;
+  updatedBy: Uuid | null;
+}
+
+export interface BalanceAfter {
+  accountId: Uuid;
+  accountNumber: string;
+  ledgerBalance: Amount;
+  availableBalance: Amount;
+}
+
+/** Result of a deposit, withdrawal or transfer: posted, or waiting for a checker. */
+export interface MovementResult {
+  outcome: 'POSTED' | 'PENDING_APPROVAL';
+  transaction: Transaction | null;
+  balances: BalanceAfter[];
+  approval: Approval | null;
+}
+
+export interface StatementLine {
+  date: IsoDate;
+  valueDate: IsoDate;
+  reference: string | null;
+  description: string | null;
+  debit: Amount | null;
+  credit: Amount | null;
+  balance: Amount;
+}
+
+export interface AccountStatement {
+  institutionName: string;
+  accountId: Uuid;
+  accountNumber: string;
+  accountTitle: string;
+  holders: string[];
+  productName: string;
+  branchName: string;
+  currency: string;
+  from: IsoDate;
+  to: IsoDate;
+  openingBalance: Amount;
+  totalDebits: Amount;
+  totalCredits: Amount;
+  closingBalance: Amount;
+  generatedAt: IsoDateTime;
+  lines: StatementLine[];
+}
