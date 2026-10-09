@@ -1,5 +1,10 @@
 package com.company.banking.loan.service;
 
+import com.company.banking.approval.dto.ApprovalResponse;
+import com.company.banking.approval.dto.ApprovalSubmission;
+import com.company.banking.approval.model.ApprovalType;
+import com.company.banking.approval.service.ApprovalHandler.ApprovedAction;
+import com.company.banking.approval.service.ApprovalService;
 import com.company.banking.audit.service.AuditEvent;
 import com.company.banking.audit.service.AuditService;
 import com.company.banking.common.api.PageResponse;
@@ -35,10 +40,14 @@ import com.company.banking.loan.entity.LoanApplication;
 import com.company.banking.loan.entity.LoanInstallment;
 import com.company.banking.loan.entity.LoanProduct;
 import com.company.banking.loan.entity.LoanProductVersion;
+import com.company.banking.loan.entity.LoanRecovery;
 import com.company.banking.loan.entity.LoanRepayment;
+import com.company.banking.loan.entity.LoanRestructure;
 import com.company.banking.loan.exception.LoanErrorCode;
 import com.company.banking.loan.repository.LoanInstallmentRepository;
+import com.company.banking.loan.repository.LoanRecoveryRepository;
 import com.company.banking.loan.repository.LoanRepaymentRepository;
+import com.company.banking.loan.repository.LoanRestructureRepository;
 import com.company.banking.loan.repository.LoanRepository;
 import com.company.banking.loan.schedule.InterestEarned;
 import com.company.banking.loan.schedule.LoanArrears;
@@ -68,6 +77,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Disbursed loans: disbursement, repayment, interest accrual and settlement.
@@ -90,10 +100,13 @@ public class LoanService {
     private static final String OWNER_PRINCIPAL = "LOAN";
     private static final String OWNER_INTEREST = "LOAN_INTEREST";
     private static final String OWNER_PENALTY = "LOAN_PENALTY";
+    private static final int SUMMARY_MAX = 300;
 
     private final LoanRepository loans;
     private final LoanInstallmentRepository installments;
     private final LoanRepaymentRepository repayments;
+    private final LoanRestructureRepository restructures;
+    private final LoanRecoveryRepository recoveries;
     private final LoanApplicationService applicationService;
     private final LoanProductService productService;
     private final LoanTerms loanTerms;
@@ -105,6 +118,8 @@ public class LoanService {
     private final BusinessDateService businessDates;
     private final CustomerService customerService;
     private final IdempotencyService idempotency;
+    private final ApprovalService approvalService;
+    private final JsonMapper jsonMapper;
     private final AuditService auditService;
     private final Clock clock;
 
@@ -345,12 +360,7 @@ public class LoanService {
      * repayment rolls back), releases its provision and hands back its collateral.
      */
     private void close(Loan loan, LocalDate today) {
-        Map<UUID, BalanceSnapshot> balances = ledgerAccounts.balances(List.of(loan.getPrincipalLedgerAccountId(),
-                loan.getInterestLedgerAccountId(), loan.getPenaltyLedgerAccountId()));
-        if (balances.values().stream().anyMatch(balance -> balance.ledgerBalance().signum() != 0)) {
-            throw new IllegalStateException("Loan " + loan.getLoanNumber() + " settled with balances left: "
-                    + balances.values());
-        }
+        requireZeroBalances(loan);
         if (loan.getProvisionHeld().signum() > 0) {
             String narration = "Loan " + loan.getLoanNumber() + " repaid: provision released";
             postingEngine.post(new PostingRequest(JournalSource.PROVISION, loan.getLoanNumber(), null,
@@ -443,10 +453,9 @@ public class LoanService {
         int daysPastDue = LoanArrears.daysPastDue(schedule.stream()
                 .map(installment -> new LoanArrears.Owing(installment.getDueDate(), outstanding(installment)))
                 .toList(), closed);
-        LoanArrears.Band band = LoanArrears.bandFor(ladder, daysPastDue);
+        LoanArrears.Band band = withFloor(loan, LoanArrears.bandFor(ladder, daysPastDue), ladder, closed);
         String previousBand = loan.getDelinquencyBand();
-        Map<UUID, BalanceSnapshot> balances = ledgerAccounts.balances(List.of(loan.getPrincipalLedgerAccountId(),
-                loan.getInterestLedgerAccountId(), loan.getPenaltyLedgerAccountId()));
+        Map<UUID, BalanceSnapshot> balances = balancesOf(loan);
         if (band.suspendAccrual() != loan.isNonAccrual()) {
             suspenseLines(loan, band.suspendAccrual(),
                     balances.get(loan.getInterestLedgerAccountId()).ledgerBalance().add(interest),
@@ -483,6 +492,25 @@ public class LoanService {
                     .build());
         }
         return new DayResult(interest, penalties, provisionChange, band.suspendAccrual(), bandChanged);
+    }
+
+    /**
+     * A restructured loan stays in at least the band it had until the date the approver agreed; after it, the floor
+     * goes.
+     */
+    private static LoanArrears.Band withFloor(Loan loan, LoanArrears.Band band, List<LoanArrears.Band> ladder,
+                                              LocalDate closed) {
+        if (loan.getBandFloor() == null) {
+            return band;
+        }
+        if (closed.isAfter(loan.getBandFloorUntil())) {
+            loan.clearBandFloor();
+            return band;
+        }
+        return ladder.stream()
+                .filter(floor -> floor.code().equals(loan.getBandFloor()) && floor.minDays() > band.minDays())
+                .findFirst()
+                .orElse(band);
     }
 
     /**
@@ -556,16 +584,301 @@ public class LoanService {
                         EntryDirection.CREDIT, amount, narration));
     }
 
+    /**
+     * Interest the current schedule has earned by {@code date}: interest carried into it by a restructure (earned
+     * and recognised before) plus what its periods have earned since it started.
+     */
     private BigDecimal earnedThrough(Loan loan, List<LoanInstallment> schedule, LocalDate date) {
-        return InterestEarned.through(schedule.stream()
+        BigDecimal carried = schedule.stream().map(LoanInstallment::getInterestCarried)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return carried.add(InterestEarned.through(schedule.stream()
                         .map(installment -> new InterestEarned.Period(installment.getFromDate(),
-                                installment.getDueDate(), installment.getInterestDue()))
-                        .toList(), loan.getDisbursementDate(), date,
-                currencies.require(loan.getCurrency()).minorUnits());
+                                installment.getDueDate(),
+                                installment.getInterestDue().subtract(installment.getInterestCarried())))
+                        .toList(), loan.getScheduleStartDate(), date,
+                currencies.require(loan.getCurrency()).minorUnits()));
     }
 
     private UUID suspenseGl() {
         return chartOfAccounts.requireSystem(SystemAccount.INTEREST_IN_SUSPENSE).id();
+    }
+
+    // ------------------------------------------------------------------------------- restructure, write-off
+
+    /**
+     * What an approved restructure runs with.
+     */
+    public record PendingRestructure(UUID loanId, int installments, LocalDate firstDueDate, int holdBandDays,
+                                     String reason) {
+    }
+
+    public record PendingWriteOff(UUID loanId, String reason) {
+    }
+
+    /**
+     * Asks for the principal still owed to be rescheduled; it runs when a checker approves it.
+     */
+    @Transactional
+    public ApprovalResponse requestRestructure(UUID loanId, LoanDtos.Restructure request) {
+        Loan loan = loadInScope(loanId);
+        requireActive(loan);
+        requireRestructureDueDate(loan, businessDates.today(), request.firstDueDate());
+        BigDecimal principal = ledgerAccounts.balance(loan.getPrincipalLedgerAccountId()).ledgerBalance();
+        String currency = loan.getCurrency();
+        return approvalService.submit(new ApprovalSubmission(ApprovalType.LOAN_RESTRUCTURE, loan.getBranchId(),
+                principal, currency, RESOURCE, loanId, summary("Restructure loan " + loan.getLoanNumber() + ": "
+                + currency + " " + currencies.present(principal, currency).toPlainString() + " over "
+                + request.installments() + " installments. " + request.reason().trim()),
+                new PendingRestructure(loanId, request.installments(), request.firstDueDate(),
+                        request.holdBandDays(), request.reason().trim())));
+    }
+
+    /**
+     * Runs an approved restructure: interest is caught up to today, the principal still owed is scheduled again at
+     * the loan's rate from today, and the interest and penalties owed are carried into the new first installment
+     * (nothing is posted: what the borrower owes today does not change). The loan keeps its band for the days the
+     * approver agreed to.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    UUID executeRestructure(ApprovedAction action) {
+        PendingRestructure pending = jsonMapper.readValue(action.payloadJson(), PendingRestructure.class);
+        UUID tenantId = TenantContext.requireTenantId();
+        Loan loan = loans.lockByTenantIdAndId(tenantId, pending.loanId())
+                .orElseThrow(() -> new ResourceNotFoundException("Loan"));
+        requireActive(loan);
+        LocalDate today = businessDates.today();
+        requireRestructureDueDate(loan, today, pending.firstDueDate());
+        accrueThrough(loan, schedule(loan), today);
+        Map<UUID, BalanceSnapshot> balances = balancesOf(loan);
+        BigDecimal principal = balances.get(loan.getPrincipalLedgerAccountId()).ledgerBalance();
+        BigDecimal interest = balances.get(loan.getInterestLedgerAccountId()).ledgerBalance();
+        BigDecimal penalty = balances.get(loan.getPenaltyLedgerAccountId()).ledgerBalance();
+        ScheduleCalculator.Schedule next = ScheduleCalculator.calculate(new ScheduleCalculator.Terms(principal,
+                loan.getAnnualRate(), loan.getInterestMethod(), loan.getRepaymentFrequency(), loan.getDayCount(),
+                pending.installments(), today, pending.firstDueDate(), 0, 0,
+                currencies.require(loan.getCurrency()).minorUnits(), RoundingMode.valueOf(loan.getRoundingMode())));
+
+        int fromVersion = loan.getScheduleVersion();
+        int toVersion = fromVersion + 1;
+        List<LoanInstallment> rows = new ArrayList<>();
+        for (ScheduleCalculator.Installment line : next.installments()) {
+            boolean first = line.number() == 1;
+            LoanInstallment row = new LoanInstallment(loan.getId(), toVersion, line.number(), tenantId,
+                    line.fromDate(), line.dueDate(), line.principal(),
+                    first ? line.interest().add(interest) : line.interest());
+            if (first) {
+                row.carryOver(interest, penalty);
+            }
+            rows.add(row);
+        }
+        installments.saveAllAndFlush(rows);
+        String band = loan.getDelinquencyBand();
+        boolean hold = band != null && pending.holdBandDays() > 0;
+        loan.restructure(toVersion, today, next.installments().getFirst().dueDate(), next.maturityDate(),
+                pending.installments(), interest, hold ? band : null,
+                hold ? today.plusDays(pending.holdBandDays()) : null);
+        loans.saveAndFlush(loan);
+        LoanRestructure restructure = restructures.saveAndFlush(LoanRestructure.builder()
+                .id(UuidV7.next())
+                .tenantId(tenantId)
+                .loanId(loan.getId())
+                .fromVersion(fromVersion)
+                .toVersion(toVersion)
+                .principal(principal)
+                .interestCarried(interest)
+                .penaltyCarried(penalty)
+                .installments(pending.installments())
+                .firstDueDate(next.installments().getFirst().dueDate())
+                .bandAtRestructure(band)
+                .holdBandDays(pending.holdBandDays())
+                .reason(pending.reason())
+                .requestedBy(action.requestedBy())
+                .approvedBy(action.approvedBy())
+                .approvalRequestId(action.requestId())
+                .businessDate(today)
+                .createdAt(clock.instant())
+                .build());
+        auditService.record(AuditEvent.builder("LOAN_RESTRUCTURED", RESOURCE)
+                .resourceId(loan.getId())
+                .resourceReference(loan.getLoanNumber())
+                .branchId(loan.getBranchId())
+                .after(toResponse(restructure, loan.getCurrency()))
+                .metadata("approvalRequestId", action.requestId())
+                .build());
+        return restructure.getId();
+    }
+
+    /**
+     * Asks for the loan to be written off; it runs when a checker approves it.
+     */
+    @Transactional
+    public ApprovalResponse requestWriteOff(UUID loanId, LoanDtos.WriteOff request) {
+        Loan loan = loadInScope(loanId);
+        requireActive(loan);
+        BigDecimal principal = ledgerAccounts.balance(loan.getPrincipalLedgerAccountId()).ledgerBalance();
+        String currency = loan.getCurrency();
+        boolean owed = principal.signum() > 0;
+        return approvalService.submit(new ApprovalSubmission(ApprovalType.LOAN_WRITE_OFF, loan.getBranchId(),
+                owed ? principal : null, owed ? currency : null, RESOURCE, loanId, summary("Write off loan "
+                + loan.getLoanNumber() + ": " + currency + " " + currencies.present(principal, currency)
+                .toPlainString() + " principal. " + request.reason().trim()),
+                new PendingWriteOff(loanId, request.reason().trim())));
+    }
+
+    /**
+     * Runs an approved write-off, in one journal posted by the maker and approved by the checker: the principal
+     * comes off against the provision held (the rest is expensed, or an excess released), and the uncollected
+     * interest and penalties come off against suspense (non-accrual) or the income they were recognised in. The
+     * loan's accounts end at zero; recoveries later are income.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    UUID executeWriteOff(ApprovedAction action) {
+        PendingWriteOff pending = jsonMapper.readValue(action.payloadJson(), PendingWriteOff.class);
+        Loan loan = loans.lockByTenantIdAndId(TenantContext.requireTenantId(), pending.loanId())
+                .orElseThrow(() -> new ResourceNotFoundException("Loan"));
+        requireActive(loan);
+        LocalDate today = businessDates.today();
+        accrueThrough(loan, schedule(loan), today);
+        Map<UUID, BalanceSnapshot> balances = balancesOf(loan);
+        BigDecimal principal = balances.get(loan.getPrincipalLedgerAccountId()).ledgerBalance();
+        BigDecimal interest = balances.get(loan.getInterestLedgerAccountId()).ledgerBalance();
+        BigDecimal penalty = balances.get(loan.getPenaltyLedgerAccountId()).ledgerBalance();
+        BigDecimal held = loan.getProvisionHeld();
+        String currency = loan.getCurrency();
+        UUID branch = loan.getBranchId();
+        String narration = "Loan " + loan.getLoanNumber() + " written off";
+
+        List<PostingLine> lines = new ArrayList<>();
+        if (principal.signum() > 0) {
+            lines.add(PostingLine.toLedgerAccount(loan.getPrincipalLedgerAccountId(), EntryDirection.CREDIT,
+                    principal, narration + ": principal"));
+        }
+        if (held.signum() > 0) {
+            lines.add(PostingLine.toGl(systemGl(SystemAccount.LOAN_LOSS_PROVISION), branch, currency,
+                    EntryDirection.DEBIT, held, narration + ": provision used"));
+        }
+        BigDecimal shortfall = principal.subtract(held);
+        if (shortfall.signum() != 0) {
+            lines.add(PostingLine.toGl(systemGl(SystemAccount.PROVISION_EXPENSE), branch, currency,
+                    shortfall.signum() > 0 ? EntryDirection.DEBIT : EntryDirection.CREDIT, shortfall.abs(),
+                    narration + (shortfall.signum() > 0 ? ": not provided for" : ": provision released")));
+        }
+        if (interest.signum() > 0) {
+            lines.add(PostingLine.toLedgerAccount(loan.getInterestLedgerAccountId(), EntryDirection.CREDIT, interest,
+                    narration + ": interest"));
+            lines.add(PostingLine.toGl(loan.isNonAccrual() ? suspenseGl() : loan.getInterestIncomeGlId(), branch,
+                    currency, EntryDirection.DEBIT, interest, narration + ": interest"));
+        }
+        if (penalty.signum() > 0) {
+            lines.add(PostingLine.toLedgerAccount(loan.getPenaltyLedgerAccountId(), EntryDirection.CREDIT, penalty,
+                    narration + ": penalties"));
+            lines.add(PostingLine.toGl(loan.isNonAccrual() ? suspenseGl() : loan.getPenaltyIncomeGlId(), branch,
+                    currency, EntryDirection.DEBIT, penalty, narration + ": penalties"));
+        }
+        if (!lines.isEmpty()) {
+            postingEngine.postApproved(new PostingRequest(JournalSource.LOAN, loan.getLoanNumber(), null, branch,
+                    null, narration, null, lines), action.requestedBy());
+        }
+        loan.writeOff(principal, interest, penalty, today);
+        requireZeroBalances(loan);
+        loans.saveAndFlush(loan);
+        auditService.record(AuditEvent.builder("LOAN_WRITTEN_OFF", RESOURCE)
+                .resourceId(loan.getId())
+                .resourceReference(loan.getLoanNumber())
+                .branchId(branch)
+                .metadata("principal", currencies.present(principal, currency))
+                .metadata("interest", currencies.present(interest, currency))
+                .metadata("penalties", currencies.present(penalty, currency))
+                .metadata("provisionUsed", currencies.present(held, currency))
+                .metadata("reason", pending.reason())
+                .metadata("approvalRequestId", action.requestId())
+                .build());
+        return loan.getId();
+    }
+
+    /**
+     * Takes money recovered on a written-off loan (recovery income), from the borrower's account or in cash at the
+     * caller's till. Never more than was written off and not yet recovered. Safe to retry with the same key.
+     */
+    @Transactional
+    public Result<LoanDtos.RecoveryReceipt> recover(String idempotencyKey, UUID loanId, LoanDtos.Repay request) {
+        return idempotent("LOAN_RECOVERY", idempotencyKey, new Request(loanId, request),
+                LoanDtos.RecoveryReceipt.class, receipt -> receipt.recovery().id(),
+                () -> recovery(idempotencyKey, loanId, request));
+    }
+
+    private LoanDtos.RecoveryReceipt recovery(String idempotencyKey, UUID loanId, LoanDtos.Repay request) {
+        Loan loan = lockInScope(loanId);
+        if (loan.getStatus() != Loan.Status.WRITTEN_OFF) {
+            throw new BankingException(LoanErrorCode.LOAN_NOT_WRITTEN_OFF);
+        }
+        String currency = loan.getCurrency();
+        BigDecimal amount = request.amount();
+        currencies.requireValidAmount(amount, currency);
+        BigDecimal recoverable = loan.writtenOffTotal().subtract(loan.getRecovered());
+        if (amount.compareTo(recoverable) > 0) {
+            throw new BankingException(LoanErrorCode.OVER_RECOVERY, "At most " + currency + " "
+                    + currencies.present(recoverable, currency).toPlainString() + " is left to recover.");
+        }
+        String narration = request.narration() == null || request.narration().isBlank()
+                ? "Loan " + loan.getLoanNumber() + " recovery" : request.narration().trim();
+        boolean cash = "CASH".equals(request.source());
+        MovementResponse movement = transactionService.postLoanMovement(new LoanMovementCommand(
+                TransactionType.LOAN_REPAYMENT, cash ? null : loan.getRepaymentAccountId(), currency, amount, null, null,
+                List.of(PostingLine.toGl(systemGl(SystemAccount.LOAN_RECOVERY_INCOME), loan.getBranchId(), currency,
+                        EntryDirection.CREDIT, amount, narration)), loan.getBranchId(), narration,
+                loan.getLoanNumber(), idempotencyKey));
+        LoanRecovery recovery = recoveries.saveAndFlush(new LoanRecovery(UuidV7.next(), loan.getTenantId(), loanId,
+                movement.transaction().id(), cash ? "CASH" : "ACCOUNT", amount, businessDates.today(),
+                CurrentActor.currentActorId().orElse(null), clock.instant()));
+        loan.recover(amount);
+        loans.saveAndFlush(loan);
+        LoanDtos.Recovery response = toResponse(recovery, currency);
+        auditService.record(AuditEvent.builder("LOAN_RECOVERY_RECEIVED", RESOURCE)
+                .resourceId(loanId)
+                .resourceReference(loan.getLoanNumber())
+                .branchId(loan.getBranchId())
+                .after(response)
+                .build());
+        return new LoanDtos.RecoveryReceipt(response, summary(loan));
+    }
+
+    private void requireRestructureDueDate(Loan loan, LocalDate today, LocalDate firstDue) {
+        if (firstDue != null && (!firstDue.isAfter(today)
+                || firstDue.isAfter(loan.getRepaymentFrequency().plus(today, 2)))) {
+            throw new BankingException(LoanErrorCode.INVALID_FIRST_DUE_DATE);
+        }
+    }
+
+    private static void requireActive(Loan loan) {
+        if (!loan.isActive()) {
+            throw new BankingException(LoanErrorCode.LOAN_NOT_ACTIVE);
+        }
+    }
+
+    private Map<UUID, BalanceSnapshot> balancesOf(Loan loan) {
+        return ledgerAccounts.balances(List.of(loan.getPrincipalLedgerAccountId(), loan.getInterestLedgerAccountId(),
+                loan.getPenaltyLedgerAccountId()));
+    }
+
+    /**
+     * A loan leaving the books must leave nothing on its accounts; anything else is a bug, so the whole action rolls
+     * back.
+     */
+    private void requireZeroBalances(Loan loan) {
+        Map<UUID, BalanceSnapshot> balances = balancesOf(loan);
+        if (balances.values().stream().anyMatch(balance -> balance.ledgerBalance().signum() != 0)) {
+            throw new IllegalStateException("Loan " + loan.getLoanNumber() + " left with balances: "
+                    + balances.values());
+        }
+    }
+
+    private UUID systemGl(SystemAccount account) {
+        return chartOfAccounts.requireSystem(account).id();
+    }
+
+    private static String summary(String text) {
+        return text.length() <= SUMMARY_MAX ? text : text.substring(0, SUMMARY_MAX - 1) + "…";
     }
 
     // ---------------------------------------------------------------------------------------------------- reads
@@ -652,7 +965,11 @@ public class LoanService {
                 schedule.stream().map(installment -> toResponse(installment, today, currency)).toList(),
                 repayments.findAllByTenantIdAndLoanIdOrderByCreatedAtDesc(loan.getTenantId(), loan.getId()).stream()
                         .map(repayment -> toResponse(repayment, currency)).toList(),
-                loan.isActive() ? toPayoff(payoffOf(loan, schedule, today), today, currency) : null);
+                loan.isActive() ? toPayoff(payoffOf(loan, schedule, today), today, currency) : null,
+                restructures.findAllByTenantIdAndLoanIdOrderByToVersion(loan.getTenantId(), loan.getId()).stream()
+                        .map(restructure -> toResponse(restructure, currency)).toList(),
+                recoveries.findAllByTenantIdAndLoanIdOrderByCreatedAtDesc(loan.getTenantId(), loan.getId()).stream()
+                        .map(recovery -> toResponse(recovery, currency)).toList());
     }
 
     private LoanDtos.Loan summary(Loan loan) {
@@ -702,7 +1019,9 @@ public class LoanService {
                     balance(balances, loan.getPenaltyLedgerAccountId(), currency), present(arrears, currency),
                     next == null ? null : next.getDueDate(),
                     next == null ? null : present(outstanding(next), currency),
-                    present(loan.getProvisionHeld(), currency), loan.getClosedOn(), loan.getVersion());
+                    present(loan.getProvisionHeld(), currency), loan.getScheduleVersion(), loan.getBandFloor(),
+                    loan.getBandFloorUntil(), present(loan.writtenOffTotal(), currency),
+                    present(loan.getRecovered(), currency), loan.getClosedOn(), loan.getVersion());
         }).toList();
     }
 
@@ -743,6 +1062,21 @@ public class LoanService {
                 present(repayment.getFeeAllocated(), currency), present(repayment.getInterestAllocated(), currency),
                 present(repayment.getPrincipalAllocated(), currency), repayment.getBusinessDate(),
                 repayment.getReceivedBy(), repayment.getCreatedAt());
+    }
+
+    private LoanDtos.RestructureRecord toResponse(LoanRestructure restructure, String currency) {
+        return new LoanDtos.RestructureRecord(restructure.getId(), restructure.getFromVersion(),
+                restructure.getToVersion(), present(restructure.getPrincipal(), currency),
+                present(restructure.getInterestCarried(), currency), present(restructure.getPenaltyCarried(), currency),
+                restructure.getInstallments(), restructure.getFirstDueDate(), restructure.getBandAtRestructure(),
+                restructure.getHoldBandDays(), restructure.getReason(), restructure.getRequestedBy(),
+                restructure.getApprovedBy(), restructure.getBusinessDate());
+    }
+
+    private LoanDtos.Recovery toResponse(LoanRecovery recovery, String currency) {
+        return new LoanDtos.Recovery(recovery.getId(), recovery.getFinancialTransactionId(), recovery.getSource(),
+                present(recovery.getAmount(), currency), recovery.getBusinessDate(), recovery.getReceivedBy(),
+                recovery.getCreatedAt());
     }
 
     private LoanDtos.Payoff toPayoff(RepaymentAllocator.Result payoff, LocalDate today, String currency) {
