@@ -28,6 +28,10 @@ public record ProductTerms(
         BigDecimal maxWithdrawalAmount,
         BigDecimal dailyWithdrawalLimit,
         int dormancyDays,
+        BigDecimal interestRate,
+        String interestCalcMethod,
+        String interestPostingFrequency,
+        String dayCount,
         List<ChargeTerms> charges) {
 
     public ProductTerms {

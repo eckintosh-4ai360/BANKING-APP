@@ -238,6 +238,14 @@ public class ProductService {
         return toTerms(loadProduct(tenantId, version.getProductId()), version);
     }
 
+    /**
+     * Versions whose accounts earn interest (a rate above zero and a posting frequency), for end-of-day.
+     */
+    @Transactional(readOnly = true)
+    public List<UUID> interestBearingVersionIds() {
+        return versions.interestBearingIds(TenantContext.requireTenantId(), ProductVersionStatus.DRAFT);
+    }
+
     @Transactional(readOnly = true)
     public Map<UUID, ProductRef> refs(Collection<UUID> productIds) {
         UUID tenantId = TenantContext.requireTenantId();
@@ -419,7 +427,9 @@ public class ProductService {
                 version.getFeeIncomeGlId(), version.getInterestExpenseGlId(), version.getMinOpeningBalance(),
                 version.getMinOperatingBalance(), version.getMaxBalance(), version.getRequiredKycTier(),
                 version.isAllowOverdraft(), version.getMaxOverdraftLimit(), version.getMaxWithdrawalAmount(),
-                version.getDailyWithdrawalLimit(), version.getDormancyDays(), chargesOf(version));
+                version.getDailyWithdrawalLimit(), version.getDormancyDays(), version.getInterestRate(),
+                version.getInterestCalcMethod(), version.getInterestPostingFrequency(), version.getDayCount(),
+                chargesOf(version));
     }
 
     private BigDecimal present(BigDecimal amount, String currency) {
