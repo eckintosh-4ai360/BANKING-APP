@@ -68,9 +68,18 @@ Start with the architecture docs in [`docs/`](docs/README.md). The [specificatio
 - **Field app:** an encrypted on-phone queue (Drift on SQLite3MultipleCiphers, key in the keystore) for collections and visits, offline limits enforced on the phone, sync with clear outcomes.
 - **CMS screens:** field operations (officers, assignments, collections, visits, alerts), susu plans, and receiving field cash at the till.
 
+### Phase 5: loans
+
+- **Loan products** with versioned terms: flat or declining-balance interest (equal installments or equal principal), daily to quarterly repayments, actual/365, actual/360 or 30/360, grace periods, fees, penalties, security and approval rules. Schedules are exact to the cent, checked against independently computed golden files, and principal always adds up to what was disbursed.
+- **Applications** go through assessment, recommendation and approval (a second approval for large loans) by different people, enforced in the database too; guarantors and collateral count once someone other than the loan officer verifies them.
+- **Disbursement and repayment** through the ledger, idempotent: each loan has its own principal, interest and penalty accounts; interest is recognised as the schedule earns it; repayments settle the oldest installments first in the product's order, and paying off waives the interest not yet earned.
+- **End-of-day** charges penalties, works out days past due and the delinquency band, moves interest into suspense for non-performing loans and keeps the provision at the band's rate.
+- **Collections, restructure and write-off:** an arrears queue with calls, visits and promises to pay (kept or broken on their date); restructures that keep what is owed and hold the loan's band; write-offs against the provision; recoveries as income. Restructures and write-offs need a second person.
+- **CMS screens:** loan applications, loans, collections with portfolio at risk, and loan products with the delinquency bands.
+
 ### Tests
 
-**301 backend tests** (unit, ArchUnit, integration against real PostgreSQL), **145 web tests** (Vitest + Testing Library) and **78 mobile tests** (Flutter unit and widget tests). They cover cross-tenant isolation, RLS, token reuse, lockout, the permission matrix, PII in logs, the four-eyes rule, ledger invariants, idempotent retries, concurrent withdrawals and transfers, maker-checker, end-of-day stopped and resumed at every checkpoint, offline batches replayed without double posting, sequence gaps, interest to the cent, teller cash against the ledger, audit tampering, session sealing, CSRF, refresh races, proxy allow-lists and form validation.
+**388 backend tests** (unit, ArchUnit, integration against real PostgreSQL), **148 web tests** (Vitest + Testing Library) and **78 mobile tests** (Flutter unit and widget tests). They cover cross-tenant isolation, RLS, token reuse, lockout, the permission matrix, PII in logs, the four-eyes rule, ledger invariants, idempotent retries, concurrent withdrawals and transfers, maker-checker, end-of-day stopped and resumed at every checkpoint, offline batches replayed without double posting, sequence gaps, interest to the cent, loan schedules against golden files, separation of duties in lending, loan arrears and provisioning, teller cash against the ledger, audit tampering, session sealing, CSRF, refresh races, proxy allow-lists and form validation.
 
 ## Quick start
 
