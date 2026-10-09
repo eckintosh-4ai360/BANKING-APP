@@ -11,7 +11,7 @@ import { ThresholdsCard } from '@/components/approval/thresholds-card';
 import { useCan } from '@/lib/me';
 import { useBranches } from '@/lib/queries';
 
-const TYPES = ['TRANSACTION_REVERSAL', 'MANUAL_JOURNAL', 'CASH_WITHDRAWAL', 'TRANSFER'];
+const TYPES = ['TRANSACTION_REVERSAL', 'MANUAL_JOURNAL', 'CASH_WITHDRAWAL', 'TRANSFER', 'LOAN_RESTRUCTURE', 'LOAN_WRITE_OFF'];
 
 export default function ApprovalsPage() {
   const { nameOf } = useBranches();

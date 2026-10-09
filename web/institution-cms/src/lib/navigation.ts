@@ -5,10 +5,14 @@ import {
   CalendarClock,
   ClipboardCheck,
   FileCheck,
+  FileSignature,
+  HandCoins,
   KeyRound,
+  Landmark,
   LayoutDashboard,
   MapPinned,
   Package,
+  PhoneCall,
   PiggyBank,
   ScrollText,
   Settings,
@@ -63,6 +67,15 @@ export const NAVIGATION: NavGroup[] = [
     entries: [
       { href: '/field', label: 'Field operations', icon: MapPinned, requires: [Permission.fieldManage, Permission.collectionView] },
       { href: '/susu', label: 'Susu', icon: PiggyBank, requires: [Permission.susuView, Permission.susuManage] },
+    ],
+  },
+  {
+    title: 'Lending',
+    entries: [
+      { href: '/loan-applications', label: 'Loan applications', icon: FileSignature, requires: [Permission.loanView] },
+      { href: '/loans', label: 'Loans', icon: HandCoins, requires: [Permission.loanView] },
+      { href: '/collections', label: 'Collections', icon: PhoneCall, requires: [Permission.loanView] },
+      { href: '/loan-products', label: 'Loan products', icon: Landmark, requires: [Permission.productView, Permission.productManage] },
     ],
   },
   {
