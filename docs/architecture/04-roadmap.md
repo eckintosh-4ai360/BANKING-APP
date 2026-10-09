@@ -24,7 +24,7 @@ flowchart LR
 
 ## Phase 1: Foundation
 
-Status: **1A done** (2026-10-06), **1B done** (2026-10-07), **1C done** (2026-10-07; Playwright smoke suite written, not yet run against a live stack), **1D done** (2026-10-08; Android/iOS builds not yet produced, see blueprint §11). Phase 1 complete; Phase 2 next.
+Status: **1A done** (2026-10-06), **1B done** (2026-10-07), **1C done** (2026-10-07; Playwright smoke suite written, not yet run against a live stack), **1D done** (2026-10-08; Android/iOS builds not yet produced, see blueprint §11). Phase 1 complete.
 
 | Step | Deliverables | Exit gate |
 |---|---|---|
@@ -34,6 +34,8 @@ Status: **1A done** (2026-10-06), **1B done** (2026-10-07), **1C done** (2026-10
 | **1D Flutter shells** | Pub workspace, `banking_core` (Dio, auth, secure storage, Money), `banking_ui` design system with widget tests, customer app and field app shells: branding bootstrap, login, home skeleton. | Widget tests green; no `double` in money code (lint rule). |
 
 ## Phase 2: Banking core (ledger first)
+
+Status: **done** (2026-10-09; backend only, see [Phase 2 blueprint](06-phase2-blueprint.md) for the exit gate evidence and the follow-ups, including the CMS screens for these APIs).
 
 Order inside the phase is strict:
 

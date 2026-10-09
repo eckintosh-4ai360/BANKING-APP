@@ -4,7 +4,7 @@ A multi-tenant core banking and microfinance platform for African financial inst
 
 | Component | Stack | Status |
 |---|---|---|
-| `backend/banking-core` | Java 21, Spring Boot 4.1 modular monolith, PostgreSQL 18, Redis, Flyway | **Phases 1A + 1B complete** |
+| `backend/banking-core` | Java 21, Spring Boot 4.1 modular monolith, PostgreSQL 18, Redis, Flyway | **Phases 1A, 1B and 2 complete** |
 | `web/institution-cms`, `web/super-admin` | Next.js 16, React 19, TypeScript, Tailwind 4, TanStack Query/Table, RHF + Zod | **Phase 1C complete** (Playwright smoke suite needs a running stack) |
 | `mobile/customer_app`, `mobile/field_officer_app` | Flutter 3.47, Riverpod 3, GoRouter 18, Dio 5, secure storage | **Phase 1D complete** (tested with `flutter test`; device builds not yet produced) |
 
@@ -42,9 +42,17 @@ Start with the architecture docs in [`docs/`](docs/README.md). The [specificatio
 - **Customer app:** white-label build per institution that loads its branding first; sign-in only when the institution enabled mobile banking.
 - **Shared core:** access token in memory only, refresh token in the platform keystore, single-flight token refresh, exact-decimal `Money` with no floating point (enforced by a test).
 
+### Phase 2: banking core
+
+- **Double-entry ledger:** chart of accounts per institution type, accounting periods, sub-ledger accounts and one posting engine. The database itself refuses unbalanced journals, changes to posted entries, postings into closed periods and overdrawn customer balances.
+- **Deposit products** with versioned terms: accounts keep the terms they were opened under. Limits, minimum and maximum balances, KYC tier and charges (flat or percentage) are part of the terms.
+- **Accounts:** single, joint and business ownership, holds, restrict / freeze / close, statements from the ledger as JSON, PDF or CSV.
+- **Money movement:** deposits, withdrawals and transfers that are idempotent on retry, run in one database transaction with their journal, audit entry and outbox event, and never overdraw under concurrency.
+- **Maker-checker:** reversals and manual journals always, withdrawals and transfers above an institution's thresholds; the checker must be a different person, and the database enforces it.
+
 ### Tests
 
-**143 backend tests** (unit, ArchUnit, integration against real PostgreSQL), **119 web tests** (Vitest + Testing Library) and **69 mobile tests** (Flutter unit and widget tests). They cover cross-tenant isolation, RLS, token reuse, lockout, the permission matrix, PII in logs, the four-eyes rule, session sealing, CSRF, refresh races, proxy allow-lists and form validation.
+**243 backend tests** (unit, ArchUnit, integration against real PostgreSQL), **119 web tests** (Vitest + Testing Library) and **69 mobile tests** (Flutter unit and widget tests). They cover cross-tenant isolation, RLS, token reuse, lockout, the permission matrix, PII in logs, the four-eyes rule, ledger invariants, idempotent retries, concurrent withdrawals and transfers, maker-checker, session sealing, CSRF, refresh races, proxy allow-lists and form validation.
 
 ## Quick start
 
@@ -102,7 +110,8 @@ flutter analyze    # then flutter test in each package and app, see mobile/READM
 ## Repository layout
 
 ```text
-backend/banking-core/     Spring Boot modular monolith (common, audit, tenant, branch, iam, staff, platform, customer, kyc, document)
+backend/banking-core/     Spring Boot modular monolith (common, audit, tenant, branch, iam, staff, platform, customer, kyc, document,
+                          ledger, product, account, transaction, approval, manualjournal)
 web/                      Next.js apps + shared packages (api, bff, ui, console)
 mobile/                   Flutter pub workspace: customer and field officer apps + shared packages
 infrastructure/           PostgreSQL init scripts; Kubernetes/observability later
