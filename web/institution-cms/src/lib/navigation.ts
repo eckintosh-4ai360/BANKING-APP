@@ -1,14 +1,17 @@
 import { hasAny, Permission } from '@banking/api';
 import {
   Building2,
+  ClipboardCheck,
   FileCheck,
   KeyRound,
   LayoutDashboard,
+  Package,
   ScrollText,
   Settings,
   ShieldCheck,
   UserCog,
   Users,
+  Wallet,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -32,6 +35,14 @@ export const NAVIGATION: NavGroup[] = [
     entries: [
       { href: '/customers', label: 'Customers', icon: Users, requires: [Permission.customerView] },
       { href: '/kyc', label: 'KYC reviews', icon: FileCheck, requires: [Permission.kycView] },
+    ],
+  },
+  {
+    title: 'Banking',
+    entries: [
+      { href: '/accounts', label: 'Accounts', icon: Wallet, requires: [Permission.accountView] },
+      { href: '/approvals', label: 'Approvals', icon: ClipboardCheck, requires: [Permission.approvalView] },
+      { href: '/products', label: 'Products', icon: Package, requires: [Permission.productView, Permission.productManage] },
     ],
   },
   {
