@@ -98,7 +98,7 @@ Without the setting you see no tenant rows. That is RLS doing its job.
 
 ## Configuration reference
 
-All settings live under `banking.*` in `application.yml` (documented in [05-phase1-blueprint.md §5](../architecture/05-phase1-blueprint.md)). Secrets come only from environment variables: `DB_APP_PASSWORD`, `DB_MIGRATOR_PASSWORD`, `REDIS_PASSWORD`, `JWT_PRIVATE_KEY_LOCATION`, `JWT_PUBLIC_KEY_LOCATION`, `DATA_KEY_V1` (and further versions), `BLIND_INDEX_KEY`, `PLATFORM_BOOTSTRAP_*`. Other deployment settings: `DOCUMENT_STORAGE_PATH`, `IDENTITY_VERIFICATION_PROVIDER` (`none` until an approved provider adapter exists), `MFA_ISSUER`.
+All settings live under `banking.*` in `application.yml` (documented in [05-phase1-blueprint.md §5](../architecture/05-phase1-blueprint.md)). Secrets come only from environment variables: `DB_APP_PASSWORD`, `DB_MIGRATOR_PASSWORD`, `REDIS_PASSWORD`, `JWT_PRIVATE_KEY_LOCATION`, `JWT_PUBLIC_KEY_LOCATION`, `DATA_KEY_V1` (and further versions), `BLIND_INDEX_KEY`, `AUDIT_SEAL_KEY_V1` (and further versions, with `AUDIT_SEAL_KEY_ACTIVE_VERSION`), `PLATFORM_BOOTSTRAP_*`. Other deployment settings: `DOCUMENT_STORAGE_PATH`, `IDENTITY_VERIFICATION_PROVIDER` (`none` until an approved provider adapter exists), `MFA_ISSUER`.
 
 The `local` profile ships fixed development encryption keys and the stub identity-verification provider (ID numbers ending in 9 "don't match"). Both are refused in deployed environments.
 
@@ -107,6 +107,7 @@ Generate encryption keys:
 ```bash
 openssl rand -base64 32   # DATA_KEY_V1
 openssl rand -base64 32   # BLIND_INDEX_KEY (rotating it means recomputing all blind indexes)
+openssl rand -base64 32   # AUDIT_SEAL_KEY_V1 (keep retired versions configured to verify old seals)
 ```
 
 Generate a JWT key pair for deployed environments:
