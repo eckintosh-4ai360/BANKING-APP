@@ -5,7 +5,7 @@ A multi-tenant core banking and microfinance platform for African financial inst
 | Component | Stack | Status |
 |---|---|---|
 | `backend/banking-core` | Java 21, Spring Boot 4.1 modular monolith, PostgreSQL 18, Redis, Flyway | **Phases 1A, 1B and 2 complete** |
-| `web/institution-cms`, `web/super-admin` | Next.js 16, React 19, TypeScript, Tailwind 4, TanStack Query/Table, RHF + Zod | **Phase 1C complete** (Playwright smoke suite needs a running stack) |
+| `web/institution-cms`, `web/super-admin` | Next.js 16, React 19, TypeScript, Tailwind 4, TanStack Query/Table, RHF + Zod | **Phase 1C complete, Phase 2 screens added** (Playwright smoke suite needs a running stack) |
 | `mobile/customer_app`, `mobile/field_officer_app` | Flutter 3.47, Riverpod 3, GoRouter 18, Dio 5, secure storage | **Phase 1D complete** (tested with `flutter test`; device builds not yet produced) |
 
 Start with the architecture docs in [`docs/`](docs/README.md). The [specification review](docs/architecture/00-specification-review.md) explains the key decisions, and the [roadmap](docs/architecture/04-roadmap.md) gives the build order and exit gates.
@@ -49,10 +49,11 @@ Start with the architecture docs in [`docs/`](docs/README.md). The [specificatio
 - **Accounts:** single, joint and business ownership, holds, restrict / freeze / close, statements from the ledger as JSON, PDF or CSV.
 - **Money movement:** deposits, withdrawals and transfers that are idempotent on retry, run in one database transaction with their journal, audit entry and outbox event, and never overdraw under concurrency.
 - **Maker-checker:** reversals and manual journals always, withdrawals and transfers above an institution's thresholds; the checker must be a different person, and the database enforces it.
+- **CMS screens:** deposit products with versioned terms and charges, account search and account page (balances, holders, deposits, withdrawals and transfers with idempotency keys, holds, status changes, transactions, reversal requests, statements with PDF/CSV download), an approvals queue with thresholds, and an accounts tab on the customer record.
 
 ### Tests
 
-**243 backend tests** (unit, ArchUnit, integration against real PostgreSQL), **119 web tests** (Vitest + Testing Library) and **69 mobile tests** (Flutter unit and widget tests). They cover cross-tenant isolation, RLS, token reuse, lockout, the permission matrix, PII in logs, the four-eyes rule, ledger invariants, idempotent retries, concurrent withdrawals and transfers, maker-checker, session sealing, CSRF, refresh races, proxy allow-lists and form validation.
+**243 backend tests** (unit, ArchUnit, integration against real PostgreSQL), **137 web tests** (Vitest + Testing Library) and **69 mobile tests** (Flutter unit and widget tests). They cover cross-tenant isolation, RLS, token reuse, lockout, the permission matrix, PII in logs, the four-eyes rule, ledger invariants, idempotent retries, concurrent withdrawals and transfers, maker-checker, session sealing, CSRF, refresh races, proxy allow-lists and form validation.
 
 ## Quick start
 

@@ -35,7 +35,7 @@ Status: **1A done** (2026-10-06), **1B done** (2026-10-07), **1C done** (2026-10
 
 ## Phase 2: Banking core (ledger first)
 
-Status: **done** (2026-10-09; backend only, see [Phase 2 blueprint](06-phase2-blueprint.md) for the exit gate evidence and the follow-ups, including the CMS screens for these APIs).
+Status: **done** (2026-10-09; backend and CMS screens, see [Phase 2 blueprint](06-phase2-blueprint.md) for the exit gate evidence and the follow-ups).
 
 Order inside the phase is strict:
 

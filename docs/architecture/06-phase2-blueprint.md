@@ -1,6 +1,6 @@
 # 06 — Phase 2 Blueprint: Banking Core
 
-Phase 2 builds the money core in the order the [roadmap](04-roadmap.md#phase-2-banking-core-ledger-first) fixes: ledger first, then idempotency and the outbox, then products and accounts, then money movement, then reversals, maker-checker and statements. Every module below is in `backend/banking-core`; the web and mobile screens for it come with the phases that use them (see §11).
+Phase 2 builds the money core in the order the [roadmap](04-roadmap.md#phase-2-banking-core-ledger-first) fixes: ledger first, then idempotency and the outbox, then products and accounts, then money movement, then reversals, maker-checker and statements. Every module below is in `backend/banking-core`; the CMS screens built on it are listed in §11.
 
 ## 1. Modules and migrations
 
@@ -127,7 +127,7 @@ Ledger: `UNBALANCED_JOURNAL`, `INVALID_POSTING`, `INVALID_AMOUNT`, `CURRENCY_NOT
 
 ## 11. Known follow-ups
 
-- **Screens.** The CMS has no screens yet for products, accounts, transactions, approvals and statements; the APIs above are complete and documented in Swagger.
+- **Screens.** The CMS covers products, accounts, money movement, holds, reversals, approvals and statements (`/products`, `/accounts`, `/approvals`, accounts tab on the customer). Manual journals and the chart of accounts have APIs only so far; the customer and field apps get account screens with Phase 5 and Phase 4.
 - **Phase 3:** teller drawers and vault (cash will move through tills instead of the branch cash GL), end-of-day with interest accrual and posting, dormancy job, year-end closing journal.
 - **Overdraft limits** exist in the ledger but no product flow grants them yet (credit decisions belong to the loans phase).
 - Account-to-account transfers require both accounts in the caller's branch scope; serving another branch's customers needs an explicit permission, decided with branch operations.
