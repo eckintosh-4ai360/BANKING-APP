@@ -26,6 +26,7 @@ import com.company.banking.platform.dto.TenantDetailsResponse;
 import com.company.banking.staff.dto.NewAdministrator;
 import com.company.banking.staff.dto.StaffCreatedResponse;
 import com.company.banking.staff.service.StaffService;
+import com.company.banking.susu.service.SusuPlanService;
 import com.company.banking.tenant.dto.FeatureResponse;
 import com.company.banking.tenant.dto.FeatureStateResponse;
 import com.company.banking.tenant.dto.NewTenantCommand;
@@ -68,6 +69,7 @@ public class PlatformTenantService {
     private final AccountingPeriodService accountingPeriodService;
     private final BusinessDateService businessDateService;
     private final BusinessCalendarService businessCalendarService;
+    private final SusuPlanService susuPlanService;
     private final AuditService auditService;
     private final TransactionTemplate transactionTemplate;
 
@@ -98,6 +100,7 @@ public class PlatformTenantService {
             chartOfAccountService.provisionDefaults(request.institutionType());
             businessDateService.provision();
             businessCalendarService.provisionDefaults();
+            susuPlanService.provisionDefaults();
             accountingPeriodService.provisionCurrentPeriod();
             OnboardTenantRequest.Administrator admin = request.administrator();
             StaffCreatedResponse administrator = staffService.provisionAdministrator(new NewAdministrator(

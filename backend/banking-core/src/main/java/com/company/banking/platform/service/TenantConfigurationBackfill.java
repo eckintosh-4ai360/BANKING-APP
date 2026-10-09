@@ -9,6 +9,7 @@ import com.company.banking.ledger.service.AccountingPeriodService;
 import com.company.banking.ledger.service.BusinessDateService;
 import com.company.banking.operations.service.BusinessCalendarService;
 import com.company.banking.ledger.service.ChartOfAccountService;
+import com.company.banking.susu.service.SusuPlanService;
 import com.company.banking.tenant.dto.TenantSummary;
 import com.company.banking.tenant.service.TenantProvisioningService;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +39,7 @@ public class TenantConfigurationBackfill implements ApplicationRunner {
     private final AccountingPeriodService accountingPeriodService;
     private final BusinessDateService businessDateService;
     private final BusinessCalendarService businessCalendarService;
+    private final SusuPlanService susuPlanService;
     private final RoleService roleService;
 
     @Override
@@ -58,6 +60,7 @@ public class TenantConfigurationBackfill implements ApplicationRunner {
             chartOfAccountService.provisionMissingSystemAccounts(tenant.institutionType());
             businessDateService.provision();
             businessCalendarService.provisionDefaults();
+            susuPlanService.provisionDefaults();
             accountingPeriodService.provisionCurrentPeriod();
             roleService.provisionMissingDefaultRoles();
             return null;
