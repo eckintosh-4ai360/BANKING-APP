@@ -65,6 +65,8 @@ Field officers & collector cash ledger → customer assignment → susu products
 
 ## Phase 5: Loans
 
+Status: **done** (2026-10-09; backend and CMS screens, see [Phase 5 blueprint](09-phase5-blueprint.md) for the exit gate evidence and the follow-ups).
+
 Loan products/versions → schedule calculator (all methods, day counts, rounding) **with exhaustive unit tests** → applications & configurable workflow → guarantors & collateral → assessment & recommendation → approval (maker-checker) → disbursement (posting) → repayments with allocation waterfall → accrual, penalties, DPD, delinquency bands, non-accrual, provisioning → collections activity, restructure, write-off.
 **Gate:** Σ installment principal = disbursed principal for every method/frequency combination; golden-file tests vs independently computed schedules.
 
