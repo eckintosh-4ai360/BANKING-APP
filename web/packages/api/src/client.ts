@@ -36,6 +36,16 @@ export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   signal?: AbortSignal;
+  /**
+   * Required by money movements. Create one per intended operation (see {@link newIdempotencyKey}) and send the
+   * same key when retrying it, so the backend moves the money at most once.
+   */
+  idempotencyKey?: string;
+}
+
+/** A fresh key for one intended money movement. */
+export function newIdempotencyKey(): string {
+  return crypto.randomUUID();
 }
 
 export type UnauthenticatedHandler = (error: ApiError) => void;
@@ -66,6 +76,9 @@ async function request<T>(url: string, options: RequestOptions): Promise<T> {
   const headers: Record<string, string> = { [BFF_HEADER]: BFF_HEADER_VALUE, accept: 'application/json' };
   if (options.body !== undefined && !isForm) {
     headers['content-type'] = 'application/json';
+  }
+  if (options.idempotencyKey) {
+    headers['idempotency-key'] = options.idempotencyKey;
   }
   const response = await fetch(url, {
     method,

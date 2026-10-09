@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, bff, hasAny, query, setUnauthenticatedHandler } from '../src';
+import { ApiError, bff, hasAny, newIdempotencyKey, query, setUnauthenticatedHandler } from '../src';
 
 function respond(status: number, body: unknown): Response {
   return new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -22,6 +22,19 @@ describe('bff client', () => {
     expect(headers['x-requested-with']).toBe('banking-bff');
     expect(headers['content-type']).toBe('application/json');
     expect(init.body).toBe('{"code":"TEMA"}');
+  });
+
+  it('sends the idempotency key of a money movement and makes a new key per operation', async () => {
+    const fetchMock = vi.fn(async () => respond(201, { success: true, data: { outcome: 'POSTED' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const key = newIdempotencyKey();
+
+    await bff('/transactions/deposits', { body: { accountId: 'a1', amount: '10.00' }, idempotencyKey: key });
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect((init.headers as Record<string, string>)['idempotency-key']).toBe(key);
+    expect(key).toMatch(/^[A-Za-z0-9_-]{8,100}$/);
+    expect(newIdempotencyKey()).not.toBe(key);
   });
 
   it('turns error envelopes into ApiError with field errors and trace id', async () => {
