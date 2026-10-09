@@ -78,7 +78,7 @@ public class Loan {
     @Column(name = "repayment_frequency", nullable = false, updatable = false, length = 10)
     private RepaymentFrequency repaymentFrequency;
 
-    @Column(name = "installments", nullable = false, updatable = false)
+    @Column(name = "installments", nullable = false)
     private int installments;
 
     @Column(name = "principal_grace", nullable = false, updatable = false)
@@ -123,10 +123,10 @@ public class Loan {
     @Column(name = "disbursement_date", nullable = false, updatable = false)
     private LocalDate disbursementDate;
 
-    @Column(name = "first_due_date", nullable = false, updatable = false)
+    @Column(name = "first_due_date", nullable = false)
     private LocalDate firstDueDate;
 
-    @Column(name = "maturity_date", nullable = false, updatable = false)
+    @Column(name = "maturity_date", nullable = false)
     private LocalDate maturityDate;
 
     @Enumerated(EnumType.STRING)
@@ -171,6 +171,27 @@ public class Loan {
 
     @Column(name = "portfolio_processed_through")
     private LocalDate portfolioProcessedThrough;
+
+    @Column(name = "schedule_start_date", nullable = false)
+    private LocalDate scheduleStartDate;
+
+    @Column(name = "band_floor", length = 20)
+    private String bandFloor;
+
+    @Column(name = "band_floor_until")
+    private LocalDate bandFloorUntil;
+
+    @Column(name = "written_off_principal", nullable = false, precision = 19, scale = 4)
+    private BigDecimal writtenOffPrincipal;
+
+    @Column(name = "written_off_interest", nullable = false, precision = 19, scale = 4)
+    private BigDecimal writtenOffInterest;
+
+    @Column(name = "written_off_penalty", nullable = false, precision = 19, scale = 4)
+    private BigDecimal writtenOffPenalty;
+
+    @Column(name = "recovered", nullable = false, precision = 19, scale = 4)
+    private BigDecimal recovered;
 
     @Version
     @Column(name = "version", nullable = false)
@@ -225,6 +246,11 @@ public class Loan {
         this.scheduleVersion = 1;
         this.interestRecognised = BigDecimal.ZERO;
         this.provisionHeld = BigDecimal.ZERO;
+        this.scheduleStartDate = disbursementDate;
+        this.writtenOffPrincipal = BigDecimal.ZERO;
+        this.writtenOffInterest = BigDecimal.ZERO;
+        this.writtenOffPenalty = BigDecimal.ZERO;
+        this.recovered = BigDecimal.ZERO;
     }
 
     public void recordAccrual(BigDecimal recognised, LocalDate through) {
@@ -253,6 +279,48 @@ public class Loan {
 
     public boolean isProcessedThrough(LocalDate date) {
         return portfolioProcessedThrough != null && !portfolioProcessedThrough.isBefore(date);
+    }
+
+    /**
+     * Switches to a new schedule version starting {@code on}. The interest already recognised and still owed is
+     * carried into it, so it is the new version's recognised interest. With a {@code bandFloor} the loan stays in at
+     * least that delinquency band until {@code floorUntil}.
+     */
+    @SuppressWarnings("java:S107")
+    public void restructure(int newVersion, LocalDate on, LocalDate newFirstDueDate, LocalDate newMaturityDate,
+                            int newInstallments, BigDecimal interestCarried, String bandFloor, LocalDate floorUntil) {
+        this.scheduleVersion = newVersion;
+        this.scheduleStartDate = on;
+        this.firstDueDate = newFirstDueDate;
+        this.maturityDate = newMaturityDate;
+        this.installments = newInstallments;
+        this.interestRecognised = interestCarried;
+        this.interestAccruedThrough = on;
+        this.bandFloor = bandFloor;
+        this.bandFloorUntil = floorUntil;
+    }
+
+    public void clearBandFloor() {
+        this.bandFloor = null;
+        this.bandFloorUntil = null;
+    }
+
+    public void writeOff(BigDecimal principal, BigDecimal interest, BigDecimal penalty, LocalDate on) {
+        this.writtenOffPrincipal = principal;
+        this.writtenOffInterest = interest;
+        this.writtenOffPenalty = penalty;
+        this.provisionHeld = BigDecimal.ZERO;
+        this.nonAccrual = false;
+        clearBandFloor();
+        close(Status.WRITTEN_OFF, on);
+    }
+
+    public BigDecimal writtenOffTotal() {
+        return writtenOffPrincipal.add(writtenOffInterest).add(writtenOffPenalty);
+    }
+
+    public void recover(BigDecimal amount) {
+        this.recovered = recovered.add(amount);
     }
 
     public void close(Status status, LocalDate on) {

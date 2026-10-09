@@ -73,6 +73,9 @@ public class LoanInstallment implements Persistable<LoanInstallment.Key> {
     @Column(name = "penalty_exact", nullable = false, precision = 28, scale = 10)
     private BigDecimal penaltyExact;
 
+    @Column(name = "interest_carried", nullable = false, updatable = false, precision = 19, scale = 4)
+    private BigDecimal interestCarried;
+
     @Transient
     @Getter(AccessLevel.NONE)
     private boolean newEntity = true;
@@ -92,6 +95,17 @@ public class LoanInstallment implements Persistable<LoanInstallment.Key> {
         this.penaltyPaid = BigDecimal.ZERO;
         this.interestWaived = BigDecimal.ZERO;
         this.penaltyExact = BigDecimal.ZERO;
+        this.interestCarried = BigDecimal.ZERO;
+    }
+
+    /**
+     * On the first installment of a restructured schedule: the interest (already recognised, included in
+     * {@code interestDue}) and penalties still owed under the schedule it replaces.
+     */
+    public void carryOver(BigDecimal interest, BigDecimal penalty) {
+        this.interestCarried = interest;
+        this.penaltyDue = penalty;
+        this.penaltyExact = penalty;
     }
 
     public int getNumber() {
