@@ -14,3 +14,10 @@ workspace:
   - field_officer_app
 dev_dependencies:
   flutter_lints: ^6.0.0
+
+# The field app's offline queue is an encrypted SQLite database: package:sqlite3 bundles SQLite3MultipleCiphers
+# (prebuilt for every platform, checked against the sha256 sums published with the package) instead of plain SQLite.
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlite3mc
