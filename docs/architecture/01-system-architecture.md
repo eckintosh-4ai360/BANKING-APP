@@ -326,7 +326,7 @@ mobile/
 | Platform | Android: INTERNET only for HTTPS in release, cleartext allowed in the debug manifest only, `allowBackup=false`. iOS: ATS with `NSAllowsLocalNetworking` only. Release builds refuse an `http` `API_BASE_URL`. |
 | White-label | Build-time `--dart-define=INSTITUTION_CODE` per institution (flavours with icons and app ids come with store release). Runtime branding comes from `GET /api/v1/public/institutions/{code}/branding`. Customer sign-in is offered only when the institution has `CUSTOMER_MOBILE_APP` enabled. |
 | Models | Hand-written, strictly parsed models for now (a few endpoints). Freezed and json_serializable code generation come in when the API surface grows (Phase 2+). |
-| Later phases | Offline queue for the field app (Drift + SQLCipher, client UUID + device sequence, `QUEUED → SENT → ACCEPTED / REJECTED / CONFLICT`), biometric step-up (`local_auth` + keystore key pair), screenshot protection, root/jailbreak *signals*, push notifications. |
+| Later phases | Offline queue for the field app (built in Phase 4: Drift on SQLite3MultipleCiphers, client UUID + device sequence, `QUEUED → SENT → ACCEPTED / REJECTED / CONFLICT`), biometric step-up (`local_auth` + keystore key pair), screenshot protection, root/jailbreak *signals*, push notifications. |
 | Testing | Unit tests (models, money, config, errors, session flows incl. refresh races) and widget tests (design system, full app flows against `FakeBackend`, a Dio adapter). |
 
 ## 5. Infrastructure architecture

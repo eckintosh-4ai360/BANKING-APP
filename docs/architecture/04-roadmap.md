@@ -58,7 +58,9 @@ Business date + holidays → vault & drawers (ledger accounts) → teller sessio
 
 ## Phase 4: Microfinance
 
-Field officers & collector cash ledger → customer assignment → susu products/plans/contributions → collections API with offline idempotency (client reference + device sequence) → visits → Field app offline queue (Drift + SQLCipher) & sync status → collector remittance to teller.
+Status: **done** (2026-10-09; backend, CMS screens and the field app's offline queue, see [Phase 4 blueprint](08-phase4-blueprint.md) for the exit gate evidence and the follow-ups; device builds not yet produced).
+
+Field officers & collector cash ledger → customer assignment → susu products/plans/contributions → collections API with offline idempotency (client reference + device sequence) → visits → Field app offline queue (Drift on an encrypted SQLite build) & sync status → collector remittance to teller.
 **Gate:** replaying the same offline batch 3× posts once; device sequence gaps raise alerts; officer cash position reconciles.
 
 ## Phase 5: Loans
