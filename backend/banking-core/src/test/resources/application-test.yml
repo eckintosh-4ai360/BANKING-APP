@@ -1,4 +1,6 @@
 banking:
+  eod:
+    async: false
   scheduling:
     enabled: false
   crypto:

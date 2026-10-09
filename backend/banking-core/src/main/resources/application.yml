@@ -86,6 +86,9 @@ banking:
     enabled: true
   outbox:
     relay-interval: PT5S
+  eod:
+    # Run end-of-day steps in the background after the business date rolls (tests run them inline).
+    async: true
   holds:
     # How often holds past their expiry are released.
     expiry-interval: PT5M
