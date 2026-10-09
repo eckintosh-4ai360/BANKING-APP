@@ -7,7 +7,9 @@ import {
   FileCheck,
   KeyRound,
   LayoutDashboard,
+  MapPinned,
   Package,
+  PiggyBank,
   ScrollText,
   Settings,
   ShieldCheck,
@@ -54,6 +56,13 @@ export const NAVIGATION: NavGroup[] = [
       { href: '/teller', label: 'My till', icon: Banknote, requires: [Permission.tellerOperate] },
       { href: '/cash', label: 'Cash', icon: Vault, requires: [Permission.cashView, Permission.cashManage, Permission.tellerSupervise] },
       { href: '/operations', label: 'End of day', icon: CalendarClock, requires: [Permission.operationsView, Permission.operationsManage] },
+    ],
+  },
+  {
+    title: 'Microfinance',
+    entries: [
+      { href: '/field', label: 'Field operations', icon: MapPinned, requires: [Permission.fieldManage, Permission.collectionView] },
+      { href: '/susu', label: 'Susu', icon: PiggyBank, requires: [Permission.susuView, Permission.susuManage] },
     ],
   },
   {
