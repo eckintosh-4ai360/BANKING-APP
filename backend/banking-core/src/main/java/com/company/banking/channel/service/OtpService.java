@@ -48,7 +48,7 @@ class OtpService {
     }
 
     /**
-     * Creates a challenge for the customer and texts its code.
+     * Creates a challenge for the customer (none yet when they are signing up) and texts its code.
      *
      * @param institution how the institution is named in the message
      */
@@ -59,9 +59,9 @@ class OtpService {
         requireBelowHourlyLimit(tenantId, phone, now);
         String code = String.format("%06d", RANDOM.nextInt(1_000_000));
         UUID id = UuidV7.next();
-        OtpChallenge challenge = challenges.save(new OtpChallenge(id, tenantId, Objects.requireNonNull(customerId),
-                phone, purpose, deviceKey, secrets.otpHash(id, code), properties.otpMaxAttempts(), now,
-                now.plus(properties.otpTtl())));
+        OtpChallenge challenge = challenges.save(new OtpChallenge(id, tenantId,
+                purpose == OtpChallenge.Purpose.REGISTRATION ? null : Objects.requireNonNull(customerId), phone, purpose,
+                deviceKey, secrets.otpHash(id, code), properties.otpMaxAttempts(), now, now.plus(properties.otpTtl())));
         sms.send(phone, institution + ": your code " + reason(purpose) + " is " + code + ". It expires in "
                 + minutes(properties.otpTtl()) + " minutes. Never share it with anyone, including our staff.");
         return issued(challenge);
@@ -163,6 +163,7 @@ class OtpService {
             case DEVICE_BINDING -> "to sign in on a new device";
             case PASSWORD_RESET -> "to reset your mobile banking password";
             case PIN_RESET -> "to reset your transaction PIN";
+            case REGISTRATION -> "to sign up for mobile banking";
         };
     }
 

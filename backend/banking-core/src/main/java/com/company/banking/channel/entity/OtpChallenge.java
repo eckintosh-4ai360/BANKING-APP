@@ -24,7 +24,7 @@ import org.hibernate.annotations.DynamicUpdate;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class OtpChallenge {
 
-    public enum Purpose { ACTIVATION, DEVICE_BINDING, PASSWORD_RESET, PIN_RESET }
+    public enum Purpose { ACTIVATION, DEVICE_BINDING, PASSWORD_RESET, PIN_RESET, REGISTRATION }
 
     public enum Status { PENDING, VERIFIED, FAILED }
 

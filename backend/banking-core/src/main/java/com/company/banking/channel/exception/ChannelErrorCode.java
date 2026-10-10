@@ -24,7 +24,15 @@ public enum ChannelErrorCode implements ErrorCode {
     BENEFICIARY_TYPE_NOT_AVAILABLE(HttpStatus.UNPROCESSABLE_CONTENT,
             "Only accounts of this institution can be saved for now; bank and mobile money transfers come later."),
     OWN_ACCOUNT(HttpStatus.UNPROCESSABLE_CONTENT, "This is one of your own accounts; pay it directly."),
-    BENEFICIARY_EXISTS(HttpStatus.CONFLICT, "This account is already one of your beneficiaries.");
+    BENEFICIARY_EXISTS(HttpStatus.CONFLICT, "This account is already one of your beneficiaries."),
+    SIGN_UP_NOT_AVAILABLE(HttpStatus.FORBIDDEN,
+            "Signing up in the app is not available at this institution. Visit a branch to become a customer."),
+    TOO_YOUNG(HttpStatus.UNPROCESSABLE_CONTENT,
+            "You are not old enough to sign up in the app. Visit a branch with a parent or guardian."),
+    NOT_SIGNING_UP(HttpStatus.CONFLICT, "You are already a customer; there is nothing to sign up for."),
+    SIGN_UP_INCOMPLETE(HttpStatus.UNPROCESSABLE_CONTENT, "Some steps of signing up are not finished yet."),
+    NOT_VERIFIED_YET(HttpStatus.UNPROCESSABLE_CONTENT,
+            "Your details have not been approved yet. We will let you know as soon as they are.");
 
     private final HttpStatus status;
     private final String defaultMessage;
