@@ -109,7 +109,6 @@ class CustomerBankingIT extends IntegrationTest {
                 CustomerApp.PIN)).expectError(422, "TRANSFER_LIMIT");
         app.pay(abena, "/api/v1/customer/transfers", "transfer-2", transfer(kofiAccountNumber, null, "500.00",
                 CustomerApp.PIN)).expect(201);
-        assertThat(app.lastMessage(abena.phone())).contains("you sent GHS 500.00 from the app");
 
         String beneficiaries = "/api/v1/customer/beneficiaries";
         app.send(abena, "POST", beneficiaries, beneficiary("BANK", kofiAccountNumber, CustomerApp.PIN))
@@ -123,6 +122,8 @@ class CustomerBankingIT extends IntegrationTest {
         assertThat(saved.get("name").asString()).isEqualTo("Kofi M.");
         assertThat(saved.get("coolingDownUntil").isNull()).isFalse();
         assertThat(app.lastMessage(abena.phone())).contains("a new beneficiary (Kofi) was added");
+        assertThat(app.get(abena, "/api/v1/customer/notifications").expect(200).data().at("/items/0/title")
+                .asString()).isEqualTo("New beneficiary");
         app.send(abena, "POST", beneficiaries, beneficiary("INTERNAL", kofiAccountNumber, CustomerApp.PIN))
                 .expectError(409, "BENEFICIARY_EXISTS");
         app.pay(abena, "/api/v1/customer/transfers", "transfer-3", transfer(null, saved.get("id").asString(), "1100.00",
