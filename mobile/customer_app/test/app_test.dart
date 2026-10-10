@@ -10,18 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Map<String, Object?> brandingJson({bool mobileApp = true}) => {
-      'code': 'demo-mfi',
-      'displayName': 'Demo Savings & Loans',
-      'logoUrl': null,
-      'primaryColor': '#7A1F5C',
-      'secondaryColor': '#118844',
-      'supportEmail': 'help@demo.test',
-      'supportPhone': '+233302000000',
-      'baseCurrency': 'GHS',
-      'locale': 'en-GH',
-      'enabledFeatures': ['SAVINGS', if (mobileApp) 'CUSTOMER_MOBILE_APP'],
-    };
+import 'support.dart' show brandingJson, profileJson;
 
 void main() {
   final now = DateTime.utc(2026, 10, 8, 10);
@@ -64,6 +53,12 @@ void main() {
   test('redirectFor keeps signed-out visitors on public screens', () {
     expect(redirectFor(const SignedOut(), Routes.welcome), isNull);
     expect(redirectFor(const SignedOut(), Routes.signIn), isNull);
+    expect(redirectFor(const SignedOut(), Routes.activate), isNull);
+    expect(redirectFor(const SignedOut(), Routes.signUp), isNull);
+    expect(redirectFor(const SignedOut(), Routes.forgotPassword), isNull);
+    expect(redirectFor(const SignedOut(), Routes.transfer), Routes.welcome);
+    expect(redirectFor(const SignedIn(), Routes.transfer), isNull);
+    expect(redirectFor(const SignedIn(), Routes.signUp), Routes.home);
     expect(redirectFor(const SignedOut(), Routes.home), Routes.welcome);
     expect(redirectFor(MfaRequired(expiresAt: now), Routes.home), Routes.verify);
     expect(redirectFor(const PasswordChangeRequired(), Routes.home), Routes.setup);
@@ -120,13 +115,17 @@ void main() {
     server
       ..reply('GET', brandingPath, Reply.ok(brandingJson()))
       ..reply('POST', '/api/v1/customer/auth/login', Reply.ok(tokenJson(access: 'access-1', refresh: 'refresh-1', now: now)))
+      ..reply('GET', '/api/v1/customer/me', Reply.ok(profileJson()))
+      ..reply('GET', '/api/v1/customer/accounts', Reply.ok({'accounts': const <Object?>[], 'totals': const <Object?>[]}))
+      ..reply('GET', '/api/v1/customer/onboarding', Reply.error(409, 'NOT_SIGNING_UP', 'You are already a customer.'))
+      ..reply('GET', '/api/v1/customer/notifications/unread', Reply.ok({'count': 0}))
       ..reply('POST', '/api/v1/auth/logout', Reply.ok(null));
     await startApp(tester);
 
     await signIn(tester);
 
-    expect(find.text('Welcome'), findsOneWidget);
-    expect(find.text('Your accounts and balances will appear here.'), findsOneWidget);
+    expect(find.text('Hello, Abena Mensah'), findsOneWidget);
+    expect(find.text('You have no accounts yet'), findsOneWidget);
     expect(server.calls('POST', '/api/v1/customer/auth/login').single.data, {
       'institutionCode': 'demo-mfi',
       'phoneNumber': '0241234567',
@@ -138,15 +137,16 @@ void main() {
     expect(find.text('Mobile banking'), findsOneWidget);
   });
 
-  testWidgets('says plainly when the sign-in service is not available yet', (tester) async {
+  testWidgets('shows the server’s reason when sign-in is refused', (tester) async {
     server
       ..reply('GET', brandingPath, Reply.ok(brandingJson()))
-      ..reply('POST', '/api/v1/customer/auth/login', Reply.error(401, 'UNAUTHENTICATED', 'Authentication is required'));
+      ..reply('POST', '/api/v1/customer/auth/login', Reply.error(401, 'INVALID_CREDENTIALS', 'The phone number or password is wrong.'));
     await startApp(tester);
 
     await signIn(tester);
 
-    expect(find.text('Mobile banking sign-in is not available yet. Please contact +233302000000.'), findsOneWidget);
+    expect(find.text('The phone number or password is wrong.'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'Password'), findsOneWidget);
   });
 
   testWidgets('validates the phone number before calling the server', (tester) async {
