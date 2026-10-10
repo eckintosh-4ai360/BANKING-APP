@@ -13,7 +13,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import tools.jackson.databind.JsonNode;
 
 /**
- * A borrower sees their loan in the app and repays it from its repayment account with their PIN.
+ * A borrower sees their loan in the app, is reminded before an installment falls due and repays it from its
+ * repayment account with their PIN.
  */
 class CustomerLoanAppIT extends LoanIntegrationTest {
 
@@ -41,7 +42,17 @@ class CustomerLoanAppIT extends LoanIntegrationTest {
         assertThat(detail.get("schedule")).hasSize(6);
         app.get(session, "/api/v1/customer/loans/" + UUID.randomUUID()).expectError(404, "RESOURCE_NOT_FOUND");
 
-        jumpTo(START, LocalDate.of(2027, 4, 1));
+        // The evening before the first installment falls due, the borrower is reminded once.
+        jumpTo(START, LocalDate.of(2027, 3, 31));
+        endOfDay("2027-03-31");
+        String loanNumber = detail.at("/loan/loanNumber").asString();
+        JsonNode reminder = app.get(session, "/api/v1/customer/notifications").expect(200).data().at("/items/0");
+        assertThat(reminder.get("title").asString()).isEqualTo("Repayment due");
+        assertThat(reminder.get("body").asString())
+                .isEqualTo("GHS 224.00 is due on Thu 1 Apr for loan " + loanNumber + ".");
+        assertThat(reminder.get("referenceId").asString()).isEqualTo(loanId);
+        assertThat(app.lastMessage(session.phone())).contains("GHS 224.00 is due on Thu 1 Apr");
+
         String path = "/api/v1/customer/loans/" + loanId + "/repayments";
         app.pay(session, path, "app-repay-0", Map.of("amount", "224.00", "pin", "9753"))
                 .expectError(422, "WRONG_PIN");
