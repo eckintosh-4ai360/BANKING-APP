@@ -42,7 +42,7 @@ import java.util.UUID;
 @Configuration(proxyBeanMethods = false)
 public class JwtConfig {
 
-    static final Set<String> AUDIENCES = Set.of("staff", "platform");
+    static final Set<String> AUDIENCES = Set.of("staff", "platform", "customer");
 
     @Bean
     public RSAKey jwtSigningKey(BankingSecurityProperties properties) throws JOSEException {
@@ -85,7 +85,7 @@ public class JwtConfig {
     }
 
     /**
-     * Exactly one known audience, a session id, a UUID subject and, for staff, a tenant.
+     * Exactly one known audience, a session id, a UUID subject and, for staff and customers, a tenant.
      */
     static OAuth2TokenValidatorResult validateBankingClaims(Jwt jwt) {
         List<String> audience = jwt.getAudience();
@@ -95,7 +95,7 @@ public class JwtConfig {
         if (!isUuid(jwt.getSubject()) || !isUuid(jwt.getClaimAsString("sid"))) {
             return invalid("Missing subject or session");
         }
-        if ("staff".equals(audience.getFirst()) && !isUuid(jwt.getClaimAsString("tid"))) {
+        if (!"platform".equals(audience.getFirst()) && !isUuid(jwt.getClaimAsString("tid"))) {
             return invalid("Missing tenant");
         }
         return OAuth2TokenValidatorResult.success();
