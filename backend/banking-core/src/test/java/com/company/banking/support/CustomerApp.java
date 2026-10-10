@@ -11,8 +11,8 @@ import java.util.regex.Pattern;
 import tools.jackson.databind.JsonNode;
 
 /**
- * Drives the customer app's API in tests: sets up mobile banking for an existing customer (reading the texted code
- * from the stub SMS gateway) and signs in from a device.
+ * Drives the customer app's API in tests: sets up mobile banking for an existing customer, or signs up someone new
+ * (reading the texted code from the stub SMS gateway), and calls the API from their device.
  */
 public final class CustomerApp {
 
@@ -50,6 +50,46 @@ public final class CustomerApp {
         JsonNode tokens = api.fromDevice("POST", "/api/v1/customer/auth/activation/complete", null, device,
                 completion).expect(200).data();
         return new Session(tokens.get("accessToken").asString(), device, phone);
+    }
+
+    /**
+     * Asks for a sign-up code for {@code phone}; returns the challenge token.
+     */
+    public String startSignUp(TenantHandle tenant, String phone, String device) {
+        return api.fromDevice("POST", "/api/v1/customer/auth/sign-up", null, device, Map.of(
+                "institutionCode", tenant.code(), "phoneNumber", phone)).expect(202).data().get("challengeToken")
+                .asString();
+    }
+
+    /**
+     * Registers with the last code texted to {@code phone}.
+     */
+    public Api.Response completeSignUp(String challengeToken, String phone, String device, String firstName,
+                                       String lastName, String dateOfBirth) {
+        Map<String, Object> completion = new LinkedHashMap<>();
+        completion.put("challengeToken", challengeToken);
+        completion.put("code", lastCode(phone));
+        completion.put("firstName", firstName);
+        completion.put("lastName", lastName);
+        completion.put("dateOfBirth", dateOfBirth);
+        completion.put("password", PASSWORD);
+        completion.put("pin", PIN);
+        completion.put("deviceName", "Test phone");
+        return api.fromDevice("POST", "/api/v1/customer/auth/sign-up/complete", null, device, completion);
+    }
+
+    /**
+     * Signs up someone new on {@code device} (the institution must offer sign-up in the app).
+     */
+    public Session signUp(TenantHandle tenant, String phone, String device, String firstName, String lastName,
+                          String dateOfBirth) {
+        String token = startSignUp(tenant, phone, device);
+        JsonNode tokens = completeSignUp(token, phone, device, firstName, lastName, dateOfBirth).expect(200).data();
+        return new Session(tokens.get("accessToken").asString(), device, phone);
+    }
+
+    public Api.Response upload(Session session, String path, String fileName, byte[] content, String... params) {
+        return api.uploadFromDevice(path, session.accessToken(), session.device(), fileName, content, params);
     }
 
     public Api.Response get(Session session, String path) {

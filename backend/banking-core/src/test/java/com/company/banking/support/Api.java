@@ -99,6 +99,20 @@ public final class Api {
     }
 
     /**
+     * A file upload from an app installation ({@code X-Device-Id}).
+     */
+    public Response uploadFromDevice(String path, String token, String deviceId, String fileName, byte[] content,
+                                     String... params) {
+        MockMultipartHttpServletRequestBuilder builder = MockMvcRequestBuilders.multipart(path)
+                .file(new MockMultipartFile("file", fileName, MediaType.APPLICATION_OCTET_STREAM_VALUE, content));
+        for (int i = 0; i + 1 < params.length; i += 2) {
+            builder.param(params[i], params[i + 1]);
+        }
+        builder.header("Authorization", "Bearer " + token).header("X-Device-Id", deviceId);
+        return perform(builder);
+    }
+
+    /**
      * Raw response bytes, for downloads.
      */
     public byte[] download(String path, String token) {
