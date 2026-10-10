@@ -18,6 +18,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -32,9 +33,13 @@ public class SecurityConfig {
 
     private static final String STAFF = ActorJwtAuthenticationConverter.AUDIENCE_AUTHORITY_PREFIX + "staff";
     private static final String PLATFORM = ActorJwtAuthenticationConverter.AUDIENCE_AUTHORITY_PREFIX + "platform";
-    private static final Set<String> CREDENTIAL_EXCHANGE_PATHS = Set.of(
-            "/api/v1/auth/staff/login", "/api/v1/auth/token/refresh", "/api/v1/auth/mfa/verify",
-            "/api/v1/platform/auth/login");
+    private static final String CUSTOMER = ActorJwtAuthenticationConverter.AUDIENCE_AUTHORITY_PREFIX + "customer";
+    /** Customer-channel endpoints used before a customer has a session. */
+    private static final String[] CUSTOMER_PUBLIC_PATHS = {
+            "/api/v1/customer/auth/login", "/api/v1/customer/auth/device/verify",
+            "/api/v1/customer/auth/activation", "/api/v1/customer/auth/activation/complete",
+            "/api/v1/customer/auth/password/reset", "/api/v1/customer/auth/password/reset/complete"};
+    private static final Set<String> CREDENTIAL_EXCHANGE_PATHS = credentialExchangePaths();
 
     @Bean
     public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http,
@@ -57,12 +62,15 @@ public class SecurityConfig {
                                 "/api/v1/auth/token/refresh",
                                 "/api/v1/auth/mfa/verify",
                                 "/api/v1/platform/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, CUSTOMER_PUBLIC_PATHS).permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/public/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/error").permitAll()
-                        .requestMatchers("/api/v1/auth/**").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated()
+                        .requestMatchers("/api/v1/auth/**").hasAnyAuthority(STAFF, PLATFORM)
                         .requestMatchers("/api/v1/platform/**").hasAuthority(PLATFORM)
+                        .requestMatchers("/api/v1/customer/**").hasAuthority(CUSTOMER)
                         .requestMatchers("/api/v1/**").hasAuthority(STAFF)
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(oauth2 -> oauth2
@@ -78,6 +86,13 @@ public class SecurityConfig {
                 .addFilterAfter(new AuthenticatedContextFilter(sessionService, errorWriter),
                         BearerTokenAuthenticationFilter.class);
         return http.build();
+    }
+
+    private static Set<String> credentialExchangePaths() {
+        Set<String> paths = new HashSet<>(Set.of("/api/v1/auth/staff/login", "/api/v1/auth/token/refresh",
+                "/api/v1/auth/mfa/verify", "/api/v1/platform/auth/login"));
+        paths.addAll(List.of(CUSTOMER_PUBLIC_PATHS));
+        return Set.copyOf(paths);
     }
 
     /**
