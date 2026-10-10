@@ -26,6 +26,22 @@ class ApiClient {
 
   Future<void> delete(String path) => _send(() => dio.delete<Object?>(path), (_) {});
 
+  /// A file upload (`multipart/form-data`): [fields] as form fields and the content as the part named `file`.
+  Future<T> upload<T>(
+    String path,
+    T Function(Object? data) parse, {
+    required List<int> bytes,
+    required String fileName,
+    Map<String, String> fields = const {},
+  }) =>
+      _send(
+        () => dio.post<Object?>(
+          path,
+          data: FormData.fromMap({...fields, 'file': MultipartFile.fromBytes(bytes, filename: fileName)}),
+        ),
+        parse,
+      );
+
   Options? _options(String? idempotencyKey, String? bearerToken) {
     if (idempotencyKey == null && bearerToken == null) {
       return null;
