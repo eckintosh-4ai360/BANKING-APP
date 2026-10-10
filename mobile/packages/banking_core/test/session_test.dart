@@ -102,6 +102,68 @@ void main() {
     });
   });
 
+  group('customers', () {
+    Future<BankingBackend> customerBackend() => BankingBackend.create(
+          config: config,
+          endpoints: AuthEndpoints.customer,
+          appName: 'customer-app',
+          keyValueStore: storage,
+          httpAdapter: server,
+          clock: () => now,
+        );
+
+    test('confirm a new installation with the texted code at the customer endpoint', () async {
+      server
+        ..reply('POST', '/api/v1/customer/auth/login', Reply.ok(mfaChallengeJson(now)))
+        ..reply('POST', '/api/v1/customer/auth/device/verify', Reply.ok(tokenJson(access: 'access-1', refresh: 'c.t.secret', now: now)));
+      final app = await customerBackend();
+      const customer = CustomerLoginRequest(institutionCode: 'demo-mfi', phoneNumber: '0241234567', password: 'pw');
+
+      await app.session.signIn(customer, institutionCode: 'demo-mfi');
+      expect(app.session.state, isA<MfaRequired>());
+      await app.session.verifyMfa('123456');
+
+      expect(app.session.state, const SignedIn());
+      expect(server.calls('POST', '/api/v1/customer/auth/device/verify').single.data, {'challengeToken': 'challenge-1', 'code': '123456'});
+      expect(server.calls('POST', '/api/v1/auth/mfa/verify'), isEmpty);
+    });
+
+    test('a session can start from another exchange, such as setting up mobile banking', () async {
+      server.reply('POST', '/api/v1/customer/auth/activation/complete', Reply.ok(tokenJson(access: 'access-1', refresh: 'c.t.secret', now: now)));
+      final app = await customerBackend();
+
+      await app.session.exchange('/api/v1/customer/auth/activation/complete', {'challengeToken': 't', 'code': '123456'}, institutionCode: 'demo-mfi');
+
+      expect(app.session.state, const SignedIn());
+      expect(await app.store.rememberedInstitution(), 'demo-mfi');
+      expect(storage.values.values.join(), contains('c.t.secret'));
+    });
+
+    test('uploads a file as multipart form data with the bearer token', () async {
+      server
+        ..reply('POST', '/api/v1/customer/auth/login', Reply.ok(tokenJson(access: 'access-1', refresh: 'refresh-1', now: now)))
+        ..reply('POST', '/api/v1/customer/onboarding/documents', Reply.ok({'uploaded': true}));
+      final app = await customerBackend();
+      await app.session.signIn(const CustomerLoginRequest(institutionCode: 'demo-mfi', phoneNumber: '0241234567', password: 'pw'));
+
+      final result = await app.authorizedClient.upload(
+        '/api/v1/customer/onboarding/documents',
+        (data) => asJsonMap(data)['uploaded'],
+        bytes: [0x89, 0x50, 0x4E, 0x47],
+        fileName: 'id.png',
+        fields: {'documentType': 'ID_FRONT'},
+      );
+
+      expect(result, isTrue);
+      final request = server.calls('POST', '/api/v1/customer/onboarding/documents').single;
+      expect(request.headers['Authorization'], 'Bearer access-1');
+      final form = request.data as FormData;
+      expect(Map.fromEntries(form.fields), {'documentType': 'ID_FRONT'});
+      expect(form.files.single.key, 'file');
+      expect(form.files.single.value.filename, 'id.png');
+    });
+  });
+
   group('refresh', () {
     test('resumes a stored session at startup', () async {
       server
