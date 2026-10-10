@@ -15,6 +15,8 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID>, JpaSp
 
     Optional<Customer> findByTenantIdAndId(UUID tenantId, UUID id);
 
+    Optional<Customer> findByTenantIdAndCustomerNumber(UUID tenantId, String customerNumber);
+
     /**
      * Row lock for every change to the customer aggregate, so concurrent edits of profile, identifications and KYC
      * state serialise.

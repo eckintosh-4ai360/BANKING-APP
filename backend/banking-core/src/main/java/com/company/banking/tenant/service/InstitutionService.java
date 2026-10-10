@@ -131,6 +131,16 @@ public class InstitutionService {
     }
 
     /**
+     * Whether the current institution has a feature switched on (and licensed by the platform).
+     */
+    @Transactional(readOnly = true)
+    public boolean isFeatureEnabled(String featureCode) {
+        return tenantFeatureRepository.findById(new TenantFeatureId(TenantContext.requireTenantId(), featureCode))
+                .map(feature -> feature.isEnabled() && feature.isLicensed())
+                .orElse(false);
+    }
+
+    /**
      * Unauthenticated white-label bootstrap. Only active institutions are visible.
      */
     public PublicBrandingResponse getPublicBranding(String tenantCode) {

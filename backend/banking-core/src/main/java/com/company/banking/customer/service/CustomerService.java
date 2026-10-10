@@ -50,6 +50,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -138,6 +139,25 @@ public class CustomerService {
     @Transactional(propagation = Propagation.MANDATORY)
     public CustomerSummary lockForNewHolding(UUID customerId) {
         return mapper.toSummary(accessGuard.lockInScope(customerId));
+    }
+
+    /**
+     * A customer looked up by number for the customer channel (activation of digital banking), with no branch scope:
+     * the caller is the customer, not staff.
+     */
+    @Transactional(readOnly = true)
+    public Optional<CustomerSummary> findByNumberForChannel(String customerNumber) {
+        return customerRepository.findByTenantIdAndCustomerNumber(TenantContext.requireTenantId(),
+                customerNumber.trim().toUpperCase(Locale.ROOT)).map(mapper::toSummary);
+    }
+
+    /**
+     * The signed-in customer's own summary, for the customer channel (no staff branch scope).
+     */
+    @Transactional(readOnly = true)
+    public Optional<CustomerSummary> findForChannel(UUID customerId) {
+        return customerRepository.findByTenantIdAndId(TenantContext.requireTenantId(), customerId)
+                .map(mapper::toSummary);
     }
 
     /**
