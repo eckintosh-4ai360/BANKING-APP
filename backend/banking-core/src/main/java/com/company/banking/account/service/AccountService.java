@@ -26,6 +26,10 @@ import com.company.banking.common.error.ConcurrentModificationException;
 import com.company.banking.common.error.ResourceNotFoundException;
 import com.company.banking.common.id.UuidV7;
 import com.company.banking.common.security.BranchScope;
+import com.company.banking.account.dto.TransferDestination;
+import com.company.banking.common.security.ActorType;
+import com.company.banking.common.security.AuthenticatedActor;
+import com.company.banking.common.error.CommonErrorCode;
 import com.company.banking.common.security.CurrentActor;
 import com.company.banking.common.sequence.CheckDigits;
 import com.company.banking.common.sequence.SequenceService;
@@ -54,7 +58,9 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -211,6 +217,55 @@ public class AccountService {
                 .filter(account -> scope.permits(account.getBranchId()))
                 .toList();
         return toSummaries(held);
+    }
+
+    /**
+     * The signed-in customer's own accounts (as primary, joint holder or signatory), for the customer channel.
+     */
+    @Transactional(readOnly = true)
+    public List<AccountSummary> heldByCurrentCustomer() {
+        AuthenticatedActor actor = CurrentActor.require();
+        if (actor.type() != ActorType.CUSTOMER) {
+            throw new BankingException(CommonErrorCode.ACCESS_DENIED);
+        }
+        return toSummaries(accountRepository.findHeldBy(TenantContext.requireTenantId(), actor.id()));
+    }
+
+    /**
+     * An account of the institution as a destination for a payment, by its number (no balance, no holders).
+     */
+    @Transactional(readOnly = true)
+    public Optional<TransferDestination> destinationByNumber(String accountNumber) {
+        return accountRepository.findByTenantIdAndAccountNumber(TenantContext.requireTenantId(), accountNumber)
+                .map(AccountService::toDestination);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<TransferDestination> destinationById(UUID accountId) {
+        return accountRepository.findByTenantIdAndId(TenantContext.requireTenantId(), accountId)
+                .map(AccountService::toDestination);
+    }
+
+    /**
+     * Locks the two accounts of a customer's transfer, in id order: the paying one must be the signed-in customer's,
+     * the receiving one any account of the institution.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Map<UUID, PostingAccount> lockForCustomerTransfer(UUID fromAccountId, UUID toAccountId) {
+        UUID tenantId = TenantContext.requireTenantId();
+        Map<UUID, PostingAccount> locked = new LinkedHashMap<>();
+        Stream.of(fromAccountId, toAccountId).distinct().sorted().forEach(accountId -> {
+            Account account = accountId.equals(fromAccountId) ? accessGuard.lockInScope(accountId)
+                    : accountRepository.lockByTenantIdAndId(tenantId, accountId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Account"));
+            locked.put(accountId, toPostingAccount(account));
+        });
+        return locked;
+    }
+
+    private static TransferDestination toDestination(Account account) {
+        return new TransferDestination(account.getId(), account.getAccountNumber(), account.getTitle(),
+                account.getCurrency(), account.getStatus().name());
     }
 
     /**
