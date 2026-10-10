@@ -10,7 +10,6 @@ import com.company.banking.audit.service.AuditService;
 import com.company.banking.channel.dto.BankingDtos;
 import com.company.banking.channel.entity.Beneficiary;
 import com.company.banking.channel.entity.ChannelSettings;
-import com.company.banking.channel.entity.CustomerCredential;
 import com.company.banking.channel.entity.CustomerDevice;
 import com.company.banking.channel.exception.ChannelErrorCode;
 import com.company.banking.channel.repository.BeneficiaryRepository;
@@ -67,7 +66,7 @@ public class CustomerBankingService {
     private final BeneficiaryRepository beneficiaries;
     private final ChannelSettingsService settingsService;
     private final PinService pinService;
-    private final OtpService otp;
+    private final CustomerInbox inbox;
     private final CurrencyService currencies;
     private final TenantService tenantService;
     private final AuditService auditService;
@@ -148,13 +147,6 @@ public class CustomerBankingService {
             }
         });
         MovementResponse movement = result.response();
-        if (!result.replayed() && !ownAccount) {
-            CustomerCredential credential = credentials.findByTenantIdAndCustomerId(actor.tenantId(), actor.id())
-                    .orElseThrow();
-            otp.noticeAfterCommit(credential.getUsername(), institution(actor) + ": you sent "
-                    + movement.transaction().currency() + " " + movement.transaction().amount().toPlainString()
-                    + " from the app (ref " + movement.transaction().reference() + ").");
-        }
         BigDecimal availableAfter = movement.balances().stream()
                 .filter(balance -> balance.accountId().equals(request.fromAccountId()))
                 .map(MovementResponse.BalanceAfter::availableBalance)
@@ -253,9 +245,9 @@ public class CustomerBankingService {
                 .metadata("type", saved.getBeneficiaryType().name())
                 .build());
         credentials.findByTenantIdAndCustomerId(actor.tenantId(), actor.id()).ifPresent(credential ->
-                otp.noticeAfterCommit(credential.getUsername(), institution(actor) + ": a new beneficiary ("
-                        + saved.getNickname() + ") was added to your mobile banking. If this was not you, contact"
-                        + " us at once."));
+                inbox.securityNotice(actor.id(), credential.getUsername(), institution(actor), "New beneficiary",
+                        "a new beneficiary (" + saved.getNickname() + ") was added to your mobile banking. If this"
+                                + " was not you, contact us at once."));
         return toResponse(saved);
     }
 

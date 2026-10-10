@@ -52,6 +52,7 @@ public class CustomerSecurityService {
     private final CustomerService customerService;
     private final CustomerSessionService customerSessions;
     private final OtpService otp;
+    private final CustomerInbox inbox;
     private final PinService pinService;
     private final PasswordService passwordService;
     private final TenantService tenantService;
@@ -142,8 +143,8 @@ public class CustomerSecurityService {
             credential.changePin(pinService.hash(request.newPin()), clock.instant());
             credentials.save(credential);
             auditService.record(AuditEvent.builder("PIN_CHANGED", PinService.RESOURCE).resourceId(actor.id()).build());
-            otp.noticeAfterCommit(credential.getUsername(), institution + ": your transaction PIN was changed."
-                    + " If this was not you, contact us at once.");
+            inbox.securityNotice(actor.id(), credential.getUsername(), institution, "PIN changed",
+                    "your transaction PIN was changed. If this was not you, contact us at once.");
             return CustomerAuthService.Outcome.success(null);
         }).throwIfFailed();
     }
@@ -191,8 +192,8 @@ public class CustomerSecurityService {
             credential.changePin(pinService.hash(request.newPin()), now);
             credentials.save(credential);
             auditService.record(AuditEvent.builder("PIN_RESET", PinService.RESOURCE).resourceId(actor.id()).build());
-            otp.noticeAfterCommit(credential.getUsername(), institution + ": your transaction PIN was reset."
-                    + " If this was not you, contact us at once.");
+            inbox.securityNotice(actor.id(), credential.getUsername(), institution, "PIN reset",
+                    "your transaction PIN was reset. If this was not you, contact us at once.");
             return CustomerAuthService.Outcome.success(null);
         }).throwIfFailed();
     }

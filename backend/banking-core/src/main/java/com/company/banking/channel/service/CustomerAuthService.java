@@ -77,6 +77,7 @@ public class CustomerAuthService {
     private final CustomerCredentialRepository credentials;
     private final CustomerDeviceRepository devices;
     private final OtpService otp;
+    private final CustomerInbox inbox;
     private final PinService pinService;
     private final PasswordService passwordService;
     private final LoginRateLimiter rateLimiter;
@@ -173,8 +174,9 @@ public class CustomerAuthService {
                     .resourceId(device.getId())
                     .metadata("deviceName", device.getName())
                     .build());
-            otp.noticeAfterCommit(credential.getUsername(), tenant.displayName() + ": a new device (" + device.getName()
-                    + ") was added to your mobile banking. If this was not you, contact us at once.");
+            inbox.securityNotice(credential.getCustomerId(), credential.getUsername(), tenant.displayName(),
+                    "New device", "a new device (" + device.getName() + ") was added to your mobile banking. If this"
+                            + " was not you, contact us at once.");
             return Outcome.success(signIn(tenant, credential, customer.get(), device, now));
         }).tokensOrThrow();
     }
@@ -259,8 +261,8 @@ public class CustomerAuthService {
                     .resourceId(customerId)
                     .metadata("deviceId", device.getId())
                     .build());
-            otp.noticeAfterCommit(credential.getUsername(), tenant.displayName() + ": mobile banking is now set up"
-                    + " for you. If this was not you, contact us at once.");
+            inbox.securityNotice(customerId, credential.getUsername(), tenant.displayName(), "Welcome",
+                    "mobile banking is now set up for you. If this was not you, contact us at once.");
             return Outcome.success(signIn(tenant, credential, customer.get(), device, now));
         }).tokensOrThrow();
     }
@@ -324,8 +326,9 @@ public class CustomerAuthService {
                     .actor(ActorType.CUSTOMER, credential.getCustomerId(), null)
                     .resourceId(credential.getCustomerId())
                     .build());
-            otp.noticeAfterCommit(credential.getUsername(), tenant.displayName() + ": your mobile banking password"
-                    + " was reset. If this was not you, contact us at once.");
+            inbox.securityNotice(credential.getCustomerId(), credential.getUsername(), tenant.displayName(),
+                    "Password reset", "your mobile banking password was reset. If this was not you, contact us at"
+                            + " once.");
             return Outcome.success(null);
         }).throwIfFailed();
     }
@@ -356,8 +359,8 @@ public class CustomerAuthService {
             auditService.record(AuditEvent.builder("PASSWORD_CHANGED", PinService.RESOURCE)
                     .resourceId(actor.id())
                     .build());
-            otp.noticeAfterCommit(credential.getUsername(), tenant.displayName() + ": your mobile banking password"
-                    + " was changed. If this was not you, contact us at once.");
+            inbox.securityNotice(actor.id(), credential.getUsername(), tenant.displayName(), "Password changed",
+                    "your mobile banking password was changed. If this was not you, contact us at once.");
             return Outcome.success(signIn(tenant, credential, customer, device, now));
         });
         return outcome.tokensOrThrow();
@@ -404,8 +407,9 @@ public class CustomerAuthService {
                     .outcome(AuditOutcome.DENIED)
                     .metadata("lockedUntil", credential.getLockedUntil())
                     .build());
-            otp.noticeAfterCommit(credential.getUsername(), tenant.displayName() + ": your mobile banking sign-in"
-                    + " was locked after several wrong passwords. If this was not you, contact us.");
+            inbox.securityNotice(credential.getCustomerId(), credential.getUsername(), tenant.displayName(),
+                    "Sign-in locked", "your mobile banking sign-in was locked after several wrong passwords. If this"
+                            + " was not you, contact us.");
             return Outcome.failure(IamErrorCode.ACCOUNT_LOCKED);
         }
         return Outcome.failure(IamErrorCode.INVALID_CREDENTIALS);
