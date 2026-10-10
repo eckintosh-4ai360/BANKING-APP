@@ -41,6 +41,12 @@ class PermissionCatalogIT extends IntegrationTest {
             AuthController.class, PlatformAuthController.class, PublicInstitutionController.class,
             MeController.class, BusinessDateController.class);
 
+    /**
+     * The customer API: only customer tokens reach it (SecurityConfig), carrying no staff permissions, and every
+     * service there serves only the signed-in customer's own data.
+     */
+    private static final String CUSTOMER_API = "/api/v1/customer/";
+
     private static final Pattern AUTHORITY = Pattern.compile("has(?:Any)?Authority\\(([^)]*)\\)");
     private static final Pattern QUOTED = Pattern.compile("'([^']+)'");
 
@@ -76,6 +82,12 @@ class PermissionCatalogIT extends IntegrationTest {
             }
             PreAuthorize preAuthorize = AnnotatedElementUtils.findMergedAnnotation(handler.getMethod(),
                     PreAuthorize.class);
+            Set<String> paths = entry.getKey().getPatternValues();
+            if (!paths.isEmpty() && paths.stream().allMatch(path -> path.startsWith(CUSTOMER_API))) {
+                assertThat(preAuthorize).as("customer endpoints use no staff permission: %s", entry.getKey())
+                        .isNull();
+                continue;
+            }
             if (preAuthorize == null) {
                 unprotected.add(entry.getKey().toString());
                 continue;

@@ -40,7 +40,7 @@ class ArchitectureTest {
     @ParameterizedTest
     @ValueSource(strings = {"audit", "tenant", "branch", "iam", "staff", "platform", "customer", "kyc", "document",
             "ledger", "product", "account", "transaction", "approval", "manualjournal", "operations", "teller",
-            "fieldops", "susu", "loan"})
+            "fieldops", "susu", "loan", "channel", "notification"})
     void entitiesAndRepositoriesArePrivateToTheirModule(String module) {
         noClasses().that().resideOutsideOfPackage(ROOT + "." + module + "..")
                 .should().dependOnClassesThat().resideInAnyPackage(
@@ -57,7 +57,8 @@ class ArchitectureTest {
                         ROOT + ".customer..", ROOT + ".kyc..", ROOT + ".document..", ROOT + ".ledger..",
                         ROOT + ".product..", ROOT + ".account..", ROOT + ".transaction..", ROOT + ".approval..",
                         ROOT + ".manualjournal..", ROOT + ".operations..", ROOT + ".teller..",
-                        ROOT + ".fieldops..", ROOT + ".susu..", ROOT + ".loan..")
+                        ROOT + ".fieldops..", ROOT + ".susu..", ROOT + ".loan..", ROOT + ".channel..",
+                        ROOT + ".notification..")
                 .check(classes);
     }
 
@@ -76,7 +77,7 @@ class ArchitectureTest {
     @Test
     void onlyAuthenticationAndProvisioningFlowsMaySwitchTenant() {
         noClasses().that().resideOutsideOfPackages(ROOT + ".platform..", ROOT + ".iam.service..",
-                        ROOT + ".tenant.service..", ROOT + ".common.tenant..")
+                        ROOT + ".channel.service..", ROOT + ".tenant.service..", ROOT + ".common.tenant..")
                 .should().callMethod(TenantContext.class, "callAs", UUID.class,
                         Supplier.class)
                 .orShould().callMethod(TenantContext.class, "runAs", UUID.class, Runnable.class)
