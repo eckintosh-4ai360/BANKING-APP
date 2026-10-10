@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
+import { CustomerAppSettings } from '@/components/channel/customer-app-settings';
 import { useCan } from '@/lib/me';
 import { useIdentificationTypes, useKycTiers, type IdentificationType } from '@/lib/queries';
 import { DIGITAL_ADDRESS, optionalEmail, optionalPattern, optionalPhone, optionalText, requiredText } from '@/lib/schemas';
@@ -18,10 +19,12 @@ export default function SettingsPage() {
   const canViewInstitution = useCan(Permission.institutionView);
   const canViewKyc = useCan(Permission.kycView);
   const canViewIdTypes = useCan(Permission.customerView);
+  const canViewChannel = useCan(Permission.settingsView, Permission.settingsManage);
   const tabs = [
     ...(canViewInstitution ? [{ id: 'institution', label: 'Institution' }, { id: 'features', label: 'Features' }] : []),
     ...(canViewKyc ? [{ id: 'tiers', label: 'KYC tiers' }] : []),
     ...(canViewIdTypes ? [{ id: 'id-types', label: 'Identification types' }] : []),
+    ...(canViewChannel ? [{ id: 'customer-app', label: 'Customer app' }] : []),
   ];
   const [tab, setTab] = useState(tabs[0]?.id ?? '');
 
@@ -33,6 +36,7 @@ export default function SettingsPage() {
       {tab === 'features' ? <FeatureSettings /> : null}
       {tab === 'tiers' ? <TierSettings /> : null}
       {tab === 'id-types' ? <IdentificationTypeSettings /> : null}
+      {tab === 'customer-app' ? <CustomerAppSettings /> : null}
     </>
   );
 }
