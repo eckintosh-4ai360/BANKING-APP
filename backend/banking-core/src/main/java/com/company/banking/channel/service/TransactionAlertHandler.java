@@ -68,8 +68,11 @@ class TransactionAlertHandler implements OutboxEventHandler {
             String text = text(event, reversed, debit, account);
             String title = title(event.path("transactionType").asString(), reversed, debit);
             for (UUID customerId : accountService.holderIdsOf(accountId)) {
+                // Money that moved before they set up mobile banking is not alerted.
                 Optional<CustomerCredential> credential = credentials.findByTenantIdAndCustomerId(
-                        TenantContext.requireTenantId(), customerId).filter(CustomerCredential::isActive);
+                                TenantContext.requireTenantId(), customerId)
+                        .filter(CustomerCredential::isActive)
+                        .filter(found -> !found.getCreatedAt().isAfter(message.occurredAt()));
                 if (credential.isEmpty()) {
                     continue;
                 }
