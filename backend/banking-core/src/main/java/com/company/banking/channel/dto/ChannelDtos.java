@@ -1,9 +1,12 @@
 package com.company.banking.channel.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 /**
@@ -63,6 +66,39 @@ public final class ChannelDtos {
         @Override
         public String toString() {
             return "Activation[institutionCode=" + institutionCode + ", customerNumber=***, phoneNumber=***]";
+        }
+    }
+
+    /**
+     * Sign-up in the app for someone who is not a customer yet: a code is texted to the phone number.
+     */
+    public record SignUp(
+            @NotBlank @Size(max = 32) String institutionCode,
+            @NotBlank @Size(max = 30) String phoneNumber) {
+
+        @Override
+        public String toString() {
+            return "SignUp[institutionCode=" + institutionCode + ", phoneNumber=***]";
+        }
+    }
+
+    /**
+     * Registers with the texted code: who they are, their password and transaction PIN.
+     */
+    public record SignUpCompletion(
+            @NotBlank @Size(max = 80) String challengeToken,
+            @NotBlank @Pattern(regexp = CODE) String code,
+            @NotBlank @Size(max = 100) String firstName,
+            @NotBlank @Size(max = 100) String lastName,
+            @NotNull @Past LocalDate dateOfBirth,
+            @NotBlank @Size(max = 128) String password,
+            @NotBlank @Pattern(regexp = PIN) String pin,
+            @Size(max = 100) String deviceName,
+            @Size(max = 20) String platform) {
+
+        @Override
+        public String toString() {
+            return "SignUpCompletion[***]";
         }
     }
 

@@ -38,6 +38,7 @@ public class SecurityConfig {
     private static final String[] CUSTOMER_PUBLIC_PATHS = {
             "/api/v1/customer/auth/login", "/api/v1/customer/auth/device/verify",
             "/api/v1/customer/auth/activation", "/api/v1/customer/auth/activation/complete",
+            "/api/v1/customer/auth/sign-up", "/api/v1/customer/auth/sign-up/complete",
             "/api/v1/customer/auth/password/reset", "/api/v1/customer/auth/password/reset/complete"};
     private static final Set<String> CREDENTIAL_EXCHANGE_PATHS = credentialExchangePaths();
 

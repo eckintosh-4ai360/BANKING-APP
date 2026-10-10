@@ -53,6 +53,19 @@ public class CustomerAuthController {
         return ApiResponse.ok("Mobile banking is set up", authService.completeActivation(request));
     }
 
+    @PostMapping("/sign-up")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    @Operation(summary = "Sign up for mobile banking as a new customer: texts a code to the phone number")
+    public ApiResponse<ChannelDtos.CodeSent> startSignUp(@Valid @RequestBody ChannelDtos.SignUp request) {
+        return ApiResponse.ok("If the number can sign up, a code is on its way", authService.startSignUp(request));
+    }
+
+    @PostMapping("/sign-up/complete")
+    @Operation(summary = "Register with the texted code, a password and a transaction PIN, and sign in")
+    public ApiResponse<TokenResponse> completeSignUp(@Valid @RequestBody ChannelDtos.SignUpCompletion request) {
+        return ApiResponse.ok("Signed up; finish your details in the app", authService.completeSignUp(request));
+    }
+
     @PostMapping("/password/reset")
     @ResponseStatus(HttpStatus.ACCEPTED)
     @Operation(summary = "Forgot password: a code is texted when the number has mobile banking")

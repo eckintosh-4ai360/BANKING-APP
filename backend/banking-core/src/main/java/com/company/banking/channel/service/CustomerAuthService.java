@@ -67,7 +67,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class CustomerAuthService {
 
     static final String MOBILE_FEATURE = "CUSTOMER_MOBILE_APP";
-    static final Set<String> SIGN_IN_STATUSES = Set.of("ACTIVE", "DORMANT", "RESTRICTED");
+    /** PENDING: signed up in the app and still finishing it (they hold no accounts until approved). */
+    static final Set<String> SIGN_IN_STATUSES = Set.of("ACTIVE", "DORMANT", "RESTRICTED", "PENDING");
     private static final String AUTH_RESOURCE = "AUTHENTICATION";
     private static final int DEVICE_NAME_MAX = 40;
 
@@ -78,6 +79,7 @@ public class CustomerAuthService {
     private final CustomerDeviceRepository devices;
     private final OtpService otp;
     private final CustomerInbox inbox;
+    private final CustomerOnboardingService onboarding;
     private final PinService pinService;
     private final PasswordService passwordService;
     private final LoginRateLimiter rateLimiter;
@@ -264,6 +266,84 @@ public class CustomerAuthService {
             inbox.securityNotice(customerId, credential.getUsername(), tenant.displayName(), "Welcome",
                     "mobile banking is now set up for you. If this was not you, contact us at once.");
             return Outcome.success(signIn(tenant, credential, customer.get(), device, now));
+        }).tokensOrThrow();
+    }
+
+    // ---------------------------------------------------------------------------------------------- sign-up
+
+    /**
+     * Texts a code to a phone number without mobile banking, when the institution offers sign-up in the app. A number
+     * that already has mobile banking gets a reminder instead of a code; the answer looks the same either way.
+     */
+    public ChannelDtos.CodeSent startSignUp(ChannelDtos.SignUp request) {
+        String deviceKey = requireDeviceKey();
+        TenantSummary tenant = institution(request.institutionCode());
+        String phone = PhoneNumbers.normalize(request.phoneNumber(), tenant.countryCode())
+                .orElseThrow(() -> new BankingException(ChannelErrorCode.INVALID_PHONE_NUMBER));
+        rateLimiter.check("customer-sign-up:" + fingerprint(phone));
+        return TenantContext.callAs(tenant.id(), () -> transactionTemplate.execute(status -> {
+            requireChannelEnabled();
+            onboarding.requireSignUpOpen();
+            boolean taken = credentials.existsByTenantIdAndUsername(tenant.id(), phone);
+            OtpService.Issued issued;
+            if (taken) {
+                otp.noticeAfterCommit(phone, tenant.displayName() + ": mobile banking is already set up for this"
+                        + " number. Sign in with your password, or choose Forgot password.");
+                issued = otp.decoy(tenant.id(), phone, OtpChallenge.Purpose.REGISTRATION, deviceKey);
+            } else {
+                issued = otp.send(tenant.id(), null, phone, OtpChallenge.Purpose.REGISTRATION, deviceKey,
+                        tenant.displayName());
+            }
+            auditService.record(AuditEvent.builder("MOBILE_BANKING_SIGN_UP_REQUESTED", AUTH_RESOURCE)
+                    .actor(ActorType.ANONYMOUS, null, null)
+                    .resourceId(issued.challengeId())
+                    .metadata("alreadySetUp", taken)
+                    .build());
+            return new ChannelDtos.CodeSent(issued.token(), issued.maskedPhone(), issued.expiresAt());
+        }));
+    }
+
+    /**
+     * Registers with the texted code: a new customer, pending until their details are approved, with a password, a
+     * transaction PIN and this installation as the first trusted device; signs them in to finish signing up.
+     */
+    public TokenResponse completeSignUp(ChannelDtos.SignUpCompletion request) {
+        String deviceKey = requireDeviceKey();
+        PinService.requireAcceptable(request.pin());
+        ChallengeTokens.Parsed parsed = parseChallenge(request.challengeToken());
+        TenantSummary tenant = challengeTenant(parsed);
+        return inTenant(tenant, () -> {
+            requireChannelEnabled();
+            onboarding.requireSignUpOpen();
+            onboarding.requireOldEnough(request.dateOfBirth());
+            String phone = otp.phoneOf(tenant.id(), parsed.challengeId()).orElse(null);
+            passwordService.validateNewPassword(request.password(), phone, null);
+            Optional<OtpChallenge> challenge = otp.verify(tenant.id(), parsed.challengeId(), request.code(),
+                    OtpChallenge.Purpose.REGISTRATION, deviceKey);
+            if (challenge.isEmpty()) {
+                return Outcome.failure(ChannelErrorCode.CODE_INVALID);
+            }
+            if (credentials.existsByTenantIdAndUsername(tenant.id(), challenge.get().getPhone())) {
+                return Outcome.failure(ChannelErrorCode.ALREADY_SET_UP);
+            }
+            Instant now = clock.instant();
+            CustomerSummary customer = onboarding.register(challenge.get().getPhone(), request.firstName(),
+                    request.lastName(), request.dateOfBirth());
+            CustomerCredential credential = credentials.saveAndFlush(new CustomerCredential(customer.id(), tenant.id(),
+                    challenge.get().getPhone(), passwordService.hash(request.password()), pinService.hash(request.pin()),
+                    now));
+            CustomerDevice device = devices.saveAndFlush(new CustomerDevice(UuidV7.next(), tenant.id(), customer.id(),
+                    deviceKey, deviceName(request.deviceName()), platform(request.platform()), now));
+            auditService.record(AuditEvent.builder("MOBILE_BANKING_SIGNED_UP", PinService.RESOURCE)
+                    .actor(ActorType.CUSTOMER, customer.id(), customer.customerNumber())
+                    .resourceId(customer.id())
+                    .resourceReference(customer.customerNumber())
+                    .metadata("deviceId", device.getId())
+                    .metadata("challengeId", parsed.challengeId())
+                    .build());
+            inbox.securityNotice(customer.id(), credential.getUsername(), tenant.displayName(), "Welcome",
+                    "you have started signing up for mobile banking. If this was not you, contact us at once.");
+            return Outcome.success(signIn(tenant, credential, customer, device, now));
         }).tokensOrThrow();
     }
 
