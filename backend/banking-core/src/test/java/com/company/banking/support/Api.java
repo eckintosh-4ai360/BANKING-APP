@@ -62,6 +62,19 @@ public final class Api {
         return perform(body == null && "GET".equals(method) ? builder : withBody(builder, body));
     }
 
+    /**
+     * A money movement from an app installation: {@code X-Device-Id} and {@code Idempotency-Key}.
+     */
+    public Response fromDeviceIdempotent(String path, String token, String deviceId, String idempotencyKey,
+                                         Object body) {
+        MockHttpServletRequestBuilder builder = authorize(MockMvcRequestBuilders.post(path), token)
+                .header("X-Device-Id", deviceId);
+        if (idempotencyKey != null) {
+            builder.header("Idempotency-Key", idempotencyKey);
+        }
+        return perform(withBody(builder, body));
+    }
+
     public Response put(String path, String token, Object body) {
         return perform(withBody(authorize(MockMvcRequestBuilders.put(path), token), body));
     }
