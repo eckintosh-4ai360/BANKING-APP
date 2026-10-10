@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * The institution's limits for transfers from the customer app (staff).
+ * The institution's settings for the customer app (staff): transfer limits and sign-up.
  */
 @RestController
 @RequestMapping("/api/v1/channel-settings")
@@ -27,7 +27,7 @@ public class ChannelSettingsController {
 
     @GetMapping
     @PreAuthorize("hasAnyAuthority('settings.view', 'settings.manage')")
-    @Operation(summary = "Limits for transfers from the customer app")
+    @Operation(summary = "Settings for the customer app: transfer limits and sign-up")
     public ApiResponse<ChannelSettingsDtos.Settings> get() {
         return ApiResponse.ok(settingsService.get());
     }
@@ -37,5 +37,13 @@ public class ChannelSettingsController {
     @Operation(summary = "Change the limits for transfers from the customer app")
     public ApiResponse<ChannelSettingsDtos.Settings> update(@Valid @RequestBody ChannelSettingsDtos.Update request) {
         return ApiResponse.ok("Settings saved", settingsService.update(request));
+    }
+
+    @PutMapping("/onboarding")
+    @PreAuthorize("hasAuthority('settings.manage')")
+    @Operation(summary = "Turn sign-up in the customer app on or off, with its branch, KYC tier and first product")
+    public ApiResponse<ChannelSettingsDtos.Settings> updateOnboarding(
+            @Valid @RequestBody ChannelSettingsDtos.OnboardingUpdate request) {
+        return ApiResponse.ok("Settings saved", settingsService.updateOnboarding(request));
     }
 }

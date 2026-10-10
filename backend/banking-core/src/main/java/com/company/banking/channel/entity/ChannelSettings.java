@@ -14,7 +14,8 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.DynamicUpdate;
 
 /**
- * The institution's limits for transfers from the customer app, in its base currency.
+ * The institution's settings for the customer app: limits for transfers, in its base currency, and whether people
+ * who are not yet customers can sign up in the app (and with which branch, KYC tier and first account).
  */
 @Getter
 @Entity
@@ -45,6 +46,21 @@ public class ChannelSettings {
     @Column(name = "new_device_max_amount", nullable = false, precision = 19, scale = 4)
     private BigDecimal newDeviceMaxAmount;
 
+    @Column(name = "self_onboarding_enabled", nullable = false)
+    private boolean selfOnboardingEnabled;
+
+    @Column(name = "onboarding_branch_id")
+    private UUID onboardingBranchId;
+
+    @Column(name = "onboarding_tier_code", length = 30)
+    private String onboardingTierCode;
+
+    @Column(name = "onboarding_product_id")
+    private UUID onboardingProductId;
+
+    @Column(name = "onboarding_min_age", nullable = false)
+    private int onboardingMinAge = 18;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
@@ -74,6 +90,25 @@ public class ChannelSettings {
         this.cooldownMaxAmount = cooldownMaxAmount;
         this.newDeviceCooldownHours = newDeviceCooldownHours;
         this.newDeviceMaxAmount = newDeviceMaxAmount;
+        this.updatedAt = now;
+        this.updatedBy = by;
+    }
+
+    /**
+     * Sign-up in the app. Turning it on needs the branch new customers belong to, the KYC tier they are verified to
+     * and the product of their first account; turning it off keeps them for next time.
+     */
+    @SuppressWarnings("java:S107")
+    public void updateOnboarding(boolean enabled, UUID branchId, String tierCode, UUID productId, int minAge,
+                                 Instant now, UUID by) {
+        if (enabled && (branchId == null || tierCode == null || productId == null)) {
+            throw new IllegalArgumentException("Sign-up needs a branch, a KYC tier and a product");
+        }
+        this.selfOnboardingEnabled = enabled;
+        this.onboardingBranchId = branchId;
+        this.onboardingTierCode = tierCode;
+        this.onboardingProductId = productId;
+        this.onboardingMinAge = minAge;
         this.updatedAt = now;
         this.updatedBy = by;
     }
