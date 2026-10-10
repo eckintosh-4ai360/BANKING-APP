@@ -17,7 +17,14 @@ public enum ChannelErrorCode implements ErrorCode {
             "Choose a PIN of 4 to 6 digits that is not one digit repeated or a run such as 1234."),
     WRONG_PIN(HttpStatus.UNPROCESSABLE_CONTENT, "The transaction PIN is wrong."),
     PIN_LOCKED(HttpStatus.LOCKED,
-            "Your transaction PIN is locked after too many wrong attempts. Reset it with a code sent to your phone.");
+            "Your transaction PIN is locked after too many wrong attempts. Reset it with a code sent to your phone."),
+    TRANSFER_LIMIT(HttpStatus.UNPROCESSABLE_CONTENT, "The transfer is above your limit for the app."),
+    DESTINATION_NOT_FOUND(HttpStatus.UNPROCESSABLE_CONTENT,
+            "No account of this institution with that number can receive money."),
+    BENEFICIARY_TYPE_NOT_AVAILABLE(HttpStatus.UNPROCESSABLE_CONTENT,
+            "Only accounts of this institution can be saved for now; bank and mobile money transfers come later."),
+    OWN_ACCOUNT(HttpStatus.UNPROCESSABLE_CONTENT, "This is one of your own accounts; pay it directly."),
+    BENEFICIARY_EXISTS(HttpStatus.CONFLICT, "This account is already one of your beneficiaries.");
 
     private final HttpStatus status;
     private final String defaultMessage;
