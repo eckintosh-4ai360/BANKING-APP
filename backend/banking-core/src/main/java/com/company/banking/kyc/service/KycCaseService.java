@@ -8,6 +8,8 @@ import com.company.banking.common.error.CommonErrorCode;
 import com.company.banking.common.error.ConcurrentModificationException;
 import com.company.banking.common.error.ResourceNotFoundException;
 import com.company.banking.common.id.UuidV7;
+import com.company.banking.common.outbox.OutboxService;
+import com.company.banking.common.security.ActorType;
 import com.company.banking.common.security.AuthenticatedActor;
 import com.company.banking.common.security.BranchScope;
 import com.company.banking.common.security.CurrentActor;
@@ -69,6 +71,7 @@ public class KycCaseService {
     private final CustomerKycService customerKycService;
     private final KycMapper mapper;
     private final AuditService auditService;
+    private final OutboxService outbox;
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
 
@@ -173,6 +176,36 @@ public class KycCaseService {
         });
     }
 
+    /**
+     * What the customer has captured so far against a tier's requirements, before any case is open (the checks of an
+     * open case are not counted).
+     */
+    @Transactional(readOnly = true)
+    public List<RequirementStatus> requirementsFor(UUID customerId, String tierCode) {
+        return evaluator.evaluate(tierService.requireActive(tierCode), customerKycService.snapshot(customerId),
+                List.of());
+    }
+
+    /**
+     * Something the customer declared about themselves while capturing a case (for example being a politically
+     * exposed person), kept as a check of the case so the reviewer weighs it like any other.
+     */
+    @Transactional
+    public KycCaseResponse recordDeclaration(UUID caseId, String checkType, String result, String note) {
+        KycCase kycCase = loadInScope(caseId, true);
+        if (!kycCase.getStatus().isCapturing()) {
+            throw new BankingException(CommonErrorCode.INVALID_STATE_TRANSITION,
+                    "Declarations are recorded while the case is being captured.");
+        }
+        KycCheck check = checkRepository.saveAndFlush(new KycCheck(UuidV7.next(), kycCase.getTenantId(),
+                kycCase.getId(), checkType, "DECLARED", null, result, null, null, note,
+                CurrentActor.require().id(), clock.instant()));
+        CustomerKycSnapshot customer = customerKycService.snapshot(kycCase.getCustomerId());
+        audit("KYC_CHECK_RECORDED", kycCase, customer, Map.of("checkType", check.getCheckType(),
+                "method", check.getMethod(), "result", check.getResult()));
+        return toResponse(kycCase, customer);
+    }
+
     @Transactional
     public KycCaseResponse recordManualCheck(UUID caseId, ManualCheckRequest request) {
         KycCase kycCase = loadInScope(caseId, true);
@@ -222,6 +255,7 @@ public class KycCaseService {
         caseRepository.saveAndFlush(kycCase);
         CustomerKycSnapshot customer = customerKycService.snapshot(kycCase.getCustomerId());
         audit("KYC_CASE_RETURNED", kycCase, customer, Map.of("note", request.note().trim()));
+        decided(kycCase, "KYC_CASE_RETURNED");
         return toResponse(kycCase, customer);
     }
 
@@ -250,6 +284,7 @@ public class KycCaseService {
         CustomerKycSnapshot customer = customerKycService.snapshot(kycCase.getCustomerId());
         audit("KYC_CASE_APPROVED", kycCase, customer, Map.of("tier", tier.getCode(),
                 "riskLevel", request.riskLevel()));
+        decided(kycCase, "KYC_CASE_APPROVED");
         return toResponse(kycCase, customer);
     }
 
@@ -263,6 +298,7 @@ public class KycCaseService {
         customerKycService.kycRejected(kycCase.getCustomerId());
         CustomerKycSnapshot customer = customerKycService.snapshot(kycCase.getCustomerId());
         audit("KYC_CASE_REJECTED", kycCase, customer, Map.of("note", request.note().trim()));
+        decided(kycCase, "KYC_CASE_REJECTED");
         return toResponse(kycCase, customer);
     }
 
@@ -293,12 +329,18 @@ public class KycCaseService {
         }
     }
 
+    /**
+     * Staff reach the cases of their branches; a customer signed in to the app reaches only their own.
+     */
     private KycCase loadInScope(UUID caseId, boolean lock) {
         UUID tenantId = TenantContext.requireTenantId();
-        BranchScope scope = CurrentActor.require().branchScope();
+        AuthenticatedActor actor = CurrentActor.require();
+        BranchScope scope = actor.branchScope();
         return (lock ? caseRepository.lockByTenantIdAndId(tenantId, caseId)
                 : caseRepository.findByTenantIdAndId(tenantId, caseId))
-                .filter(kycCase -> scope.permits(kycCase.getBranchId()))
+                .filter(kycCase -> actor.type() == ActorType.CUSTOMER
+                        ? kycCase.getCustomerId().equals(actor.id())
+                        : scope.permits(kycCase.getBranchId()))
                 .orElseThrow(() -> new ResourceNotFoundException("KYC case"));
     }
 
@@ -342,6 +384,15 @@ public class KycCaseService {
                 kycCase.getBranchId(), kycCase.getCaseType().name(), kycCase.getTargetTierCode(),
                 kycCase.getStatus().name(), kycCase.getSubmittedBy(), kycCase.getSubmittedAt(),
                 kycCase.getCreatedAt());
+    }
+
+    /**
+     * Tells the rest of the platform (for example the customer app) that a reviewer decided; the reviewer's note
+     * stays internal.
+     */
+    private void decided(KycCase kycCase, String eventType) {
+        outbox.publish("KYC_CASE", kycCase.getId(), eventType, Map.of("customerId", kycCase.getCustomerId(),
+                "caseType", kycCase.getCaseType().name(), "targetTierCode", kycCase.getTargetTierCode()));
     }
 
     private void audit(String action, KycCase kycCase, CustomerKycSnapshot customer, Map<String, Object> details) {
