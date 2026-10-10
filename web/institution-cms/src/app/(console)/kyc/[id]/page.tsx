@@ -26,6 +26,7 @@ import { CircleCheck, CircleDashed } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
+import { SignUpAnswers } from '@/components/channel/sign-up-answers';
 import { useCan, useMe } from '@/lib/me';
 import { useBranches } from '@/lib/queries';
 
@@ -217,6 +218,8 @@ export default function KycCasePage() {
         </CardContent>
       </Card>
 
+      <SignUpAnswers customerId={data.customerId} />
+
       {dialog ? <DecisionDialog kind={dialog} kycCase={data} onClose={() => setDialog(null)} onDone={updated} /> : null}
     </>
   );
@@ -229,7 +232,11 @@ const DIALOGS: Record<DecisionKind, { title: string; description: string; confir
     confirm: 'Approve',
   },
   reject: { title: 'Reject KYC', description: 'The customer is marked as rejected. Explain why.', confirm: 'Reject', destructive: true },
-  return: { title: 'Return for correction', description: 'The case goes back to the capturing officer with your note.', confirm: 'Return case' },
+  return: {
+    title: 'Return for correction',
+    description: 'The case goes back to whoever captured it with your note. A customer who signed up in the app sees the note there, so write it to them.',
+    confirm: 'Return case',
+  },
   cancel: { title: 'Cancel case', description: 'The case is closed without a decision.', confirm: 'Cancel case', destructive: true },
   check: { title: 'Record manual check', description: 'Record the outcome of a check you performed (e.g. a watchlist or PEP screening).', confirm: 'Record check' },
 };
