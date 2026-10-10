@@ -27,6 +27,8 @@ banking:
     sms:
       provider: stub
       stub-inbox-enabled: true
+    push:
+      provider: stub
   channel:
     pin-pepper: CaK7tzupRMuSVBxZIhyjJAkD1vVAGI+pYirI/tUYpao=
     otp-pepper: haQ04s7+udwnxake6Nc79QO7FNxxmy7xbm5dtV3b40M=

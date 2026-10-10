@@ -157,6 +157,10 @@ banking:
       # anything that must text a code fails openly with SMS_UNAVAILABLE.
       provider: ${SMS_PROVIDER:none}
       stub-inbox-enabled: false
+    push:
+      # none | stub. Push providers (FCM, APNs) arrive with the integrations of Phase 7; until then devices register
+      # their tokens and notifications wait in the in-app inbox.
+      provider: ${PUSH_PROVIDER:none}
   # Customer channel. The peppers come from the secret manager (base64, at least 32 bytes); the application refuses
   # to start without them.
   channel:

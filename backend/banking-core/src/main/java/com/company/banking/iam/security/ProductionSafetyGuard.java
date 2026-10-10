@@ -74,6 +74,9 @@ public class ProductionSafetyGuard implements InitializingBean {
                 || Boolean.parseBoolean(environment.getProperty("banking.notification.sms.stub-inbox-enabled"))) {
             fail("The stub SMS gateway and its inbox are not allowed in deployed environments");
         }
+        if ("stub".equals(environment.getProperty("banking.notification.push.provider"))) {
+            fail("The stub push gateway is not allowed in deployed environments");
+        }
         if ("stub".equals(environment.getProperty("banking.kyc.identity-verification-provider"))) {
             fail("The stub identity-verification provider is not allowed in deployed environments");
         }

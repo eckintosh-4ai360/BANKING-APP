@@ -22,6 +22,8 @@ banking:
   notification:
     sms:
       provider: stub
+    push:
+      provider: stub
   channel:
     pin-pepper: 9IPvmqQAx/fAzh2tR8VtiHFW9FdWOpxVNvNiZHw8YbI=
     otp-pepper: fwmN05hDAkTp4Oh8OA5KjLLVdTv6ezvEsGHgIV+DhvE=
