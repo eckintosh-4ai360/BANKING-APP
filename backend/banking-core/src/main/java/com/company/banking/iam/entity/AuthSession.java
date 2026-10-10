@@ -62,12 +62,23 @@ public class AuthSession {
     @Column(name = "user_agent", length = 400)
     private String userAgent;
 
+    /** The customer's trusted device the session was opened on (customers only). */
+    @Column(name = "device_id", updatable = false)
+    private UUID deviceId;
+
     @Version
     @Column(name = "version", nullable = false)
     private Long version;
 
     public AuthSession(UUID id, UUID tenantId, PrincipalType principalType, UUID principalId, Instant now,
                        Instant expiresAt, String ipAddress, String userAgent) {
+        this(id, tenantId, principalType, principalId, null, now, expiresAt, ipAddress, userAgent);
+    }
+
+    @SuppressWarnings("java:S107")
+    public AuthSession(UUID id, UUID tenantId, PrincipalType principalType, UUID principalId, UUID deviceId,
+                       Instant now, Instant expiresAt, String ipAddress, String userAgent) {
+        this.deviceId = deviceId;
         this.id = id;
         this.tenantId = tenantId;
         this.principalType = principalType;

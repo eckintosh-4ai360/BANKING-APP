@@ -4,7 +4,8 @@ import com.company.banking.common.security.ActorType;
 
 public enum PrincipalType {
     STAFF("staff", ActorType.STAFF),
-    PLATFORM("platform", ActorType.PLATFORM_ADMIN);
+    PLATFORM("platform", ActorType.PLATFORM_ADMIN),
+    CUSTOMER("customer", ActorType.CUSTOMER);
 
     private final String audience;
     private final ActorType actorType;

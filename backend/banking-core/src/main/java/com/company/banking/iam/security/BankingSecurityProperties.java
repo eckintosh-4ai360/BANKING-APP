@@ -61,7 +61,9 @@ public record BankingSecurityProperties(
             Duration staffAbsoluteTtl,
             Duration staffIdleTtl,
             Duration platformAbsoluteTtl,
-            Duration platformIdleTtl) {
+            Duration platformIdleTtl,
+            Duration customerAbsoluteTtl,
+            Duration customerIdleTtl) {
     }
 
     public record Lockout(int maxFailedAttempts, Duration duration) {

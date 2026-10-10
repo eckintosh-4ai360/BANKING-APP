@@ -47,10 +47,19 @@ public class SessionService {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public NewSession open(PrincipalType principalType, UUID principalId, UUID tenantId) {
+        return open(principalType, principalId, tenantId, null);
+    }
+
+    /**
+     * @param deviceId the customer's trusted device (customers only)
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public NewSession open(PrincipalType principalType, UUID principalId, UUID tenantId, UUID deviceId) {
         Instant now = clock.instant();
         RequestMetadata client = RequestMetadata.current();
         AuthSession session = sessionRepository.save(new AuthSession(UuidV7.next(), tenantId, principalType,
-                principalId, now, now.plus(absoluteTtl(principalType)), client.ipAddress(), client.userAgent()));
+                principalId, deviceId, now, now.plus(absoluteTtl(principalType)), client.ipAddress(),
+                client.userAgent()));
         IssuedRefreshToken refreshToken = issueRefreshToken(session, now);
         return new NewSession(session.getId(), refreshToken.value(), refreshToken.expiresAt());
     }
@@ -114,7 +123,7 @@ public class SessionService {
     }
 
     private IssuedRefreshToken issueRefreshToken(AuthSession session, Instant now) {
-        String raw = codec.generate(session.getTenantId());
+        String raw = codec.generate(session.getPrincipalType(), session.getTenantId());
         Instant idleExpiry = now.plus(idleTtl(session.getPrincipalType()));
         Instant expiresAt = idleExpiry.isBefore(session.getExpiresAt()) ? idleExpiry : session.getExpiresAt();
         refreshTokenRepository.save(new RefreshToken(codec.hash(raw), session.getTenantId(), session.getId(), now,
@@ -123,15 +132,19 @@ public class SessionService {
     }
 
     private Duration absoluteTtl(PrincipalType type) {
-        return type == PrincipalType.STAFF
-                ? properties.session().staffAbsoluteTtl()
-                : properties.session().platformAbsoluteTtl();
+        return switch (type) {
+            case STAFF -> properties.session().staffAbsoluteTtl();
+            case PLATFORM -> properties.session().platformAbsoluteTtl();
+            case CUSTOMER -> properties.session().customerAbsoluteTtl();
+        };
     }
 
     private Duration idleTtl(PrincipalType type) {
-        return type == PrincipalType.STAFF
-                ? properties.session().staffIdleTtl()
-                : properties.session().platformIdleTtl();
+        return switch (type) {
+            case STAFF -> properties.session().staffIdleTtl();
+            case PLATFORM -> properties.session().platformIdleTtl();
+            case CUSTOMER -> properties.session().customerIdleTtl();
+        };
     }
 
     public record NewSession(UUID sessionId, String refreshToken, Instant refreshTokenExpiresAt) {
