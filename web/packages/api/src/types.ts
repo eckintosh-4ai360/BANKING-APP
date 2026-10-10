@@ -1453,3 +1453,48 @@ export interface LoanPortfolio {
   nonAccrualLoans: number;
   bands: { code: string; name: string; loans: number; principalOutstanding: Amount; provisionHeld: Amount }[];
 }
+
+// ------------------------------------------------------------------------------------ customer app (Phase 6)
+
+/** Sign-up in the customer app for people who are not yet customers. */
+export interface SignUpSettings {
+  enabled: boolean;
+  /** The branch new customers belong to. */
+  branchId: Uuid | null;
+  branchName: string | null;
+  /** The KYC tier they are verified to. */
+  tierCode: string | null;
+  /** The product of the first account they open once approved. */
+  productId: Uuid | null;
+  productName: string | null;
+  minimumAge: number;
+}
+
+/** The institution's settings for the customer app. Amounts are in its base currency. */
+export interface ChannelSettings {
+  currency: string;
+  maxTransferAmount: Amount;
+  dailyTransferLimit: Amount;
+  beneficiaryCooldownHours: number;
+  cooldownMaxAmount: Amount;
+  newDeviceCooldownHours: number;
+  newDeviceMaxAmount: Amount;
+  onboarding: SignUpSettings;
+  updatedAt: IsoDateTime;
+  version: number;
+}
+
+/** How a customer signed up in the app (risk profile answers and progress), for staff reviewing them. */
+export interface CustomerSignUp {
+  customerId: Uuid;
+  startedAt: IsoDateTime;
+  sourceOfFunds: string | null;
+  accountPurpose: string | null;
+  expectedMonthlyTurnover: string | null;
+  politicallyExposed: boolean | null;
+  riskAnsweredAt: IsoDateTime | null;
+  kycCaseId: Uuid | null;
+  submittedAt: IsoDateTime | null;
+  accountId: Uuid | null;
+  completedAt: IsoDateTime | null;
+}
