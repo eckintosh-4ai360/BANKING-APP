@@ -16,6 +16,7 @@ import com.company.banking.common.id.UuidV7;
 import com.company.banking.common.idempotency.IdempotencyService;
 import com.company.banking.common.idempotency.IdempotencyService.Result;
 import com.company.banking.common.outbox.OutboxService;
+import com.company.banking.common.security.ActorType;
 import com.company.banking.common.security.AuthenticatedActor;
 import com.company.banking.common.security.CurrentActor;
 import com.company.banking.common.tenant.TenantContext;
@@ -41,6 +42,7 @@ import com.company.banking.teller.exception.TellerErrorCode;
 import com.company.banking.teller.service.TellerSessionService;
 import com.company.banking.transaction.dto.CashDepositRequest;
 import com.company.banking.transaction.dto.CashWithdrawalRequest;
+import com.company.banking.transaction.dto.CustomerTransferCommand;
 import com.company.banking.transaction.dto.FieldCollectionCommand;
 import com.company.banking.transaction.dto.LoanMovementCommand;
 import com.company.banking.transaction.dto.MovementResponse;
@@ -57,12 +59,14 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
@@ -204,7 +208,7 @@ public class TransactionService {
             }
             return post(new Movement(TransactionType.LOAN_DISBURSEMENT, null, account, command.branchId(), null,
                     amount, fee, command.currency(), narration, command.externalReference(), command.idempotencyKey(),
-                    TransactionChannel.BRANCH), lines, null);
+                    channelOfActor()), lines, null);
         }
         if (command.type() != TransactionType.LOAN_REPAYMENT) {
             throw new IllegalArgumentException("Not a loan movement: " + command.type());
@@ -227,7 +231,15 @@ public class TransactionService {
         lines.add(PostingLine.toLedgerAccount(account.ledgerAccountId(), EntryDirection.DEBIT, amount, narration));
         return post(new Movement(TransactionType.LOAN_REPAYMENT, account, null, command.branchId(), null, amount,
                 BigDecimal.ZERO, command.currency(), narration, command.externalReference(), command.idempotencyKey(),
-                TransactionChannel.BRANCH), lines, null);
+                channelOfActor()), lines, null);
+    }
+
+    /**
+     * A movement a customer makes in the app is a mobile one; staff work at a branch.
+     */
+    private static TransactionChannel channelOfActor() {
+        return CurrentActor.current().map(actor -> actor.type() == ActorType.CUSTOMER).orElse(false)
+                ? TransactionChannel.MOBILE : TransactionChannel.BRANCH;
     }
 
     private static void requireCustomerSide(PostingAccount account, String currency, boolean allowed,
@@ -250,6 +262,64 @@ public class TransactionService {
     public Result<MovementResponse> transfer(String idempotencyKey, TransferRequest request) {
         return idempotent(TransactionType.TRANSFER, idempotencyKey, request,
                 () -> transferBetween(request, idempotencyKey, null));
+    }
+
+    /**
+     * A transfer by the signed-in customer from the app (channel {@code MOBILE}): the same product rules, charges
+     * and checks as at a branch, but never a maker-checker request, since the channel's own limits apply instead.
+     * {@code preconditions} runs once, on the first attempt only (a retry with the same key replays the result), inside
+     * the transaction and after the accounts are locked, with the transfer's currency: the PIN and channel limits.
+     */
+    @Transactional
+    public Result<MovementResponse> customerTransfer(String idempotencyKey, CustomerTransferCommand command,
+                                                     Consumer<String> preconditions) {
+        return idempotent(TransactionType.TRANSFER, idempotencyKey, command, () -> {
+            if (command.fromAccountId().equals(command.toAccountId())) {
+                throw new BankingException(TransactionErrorCode.SAME_ACCOUNT_TRANSFER);
+            }
+            Map<UUID, PostingAccount> locked = accountService.lockForCustomerTransfer(command.fromAccountId(),
+                    command.toAccountId());
+            PostingAccount from = locked.get(command.fromAccountId());
+            PostingAccount to = locked.get(command.toAccountId());
+            if (!from.debitAllowed()) {
+                throw new BankingException(TransactionErrorCode.ACCOUNT_NOT_DEBITABLE);
+            }
+            if (!to.creditAllowed()) {
+                throw new BankingException(TransactionErrorCode.ACCOUNT_NOT_CREDITABLE);
+            }
+            if (!from.currency().equals(to.currency())) {
+                throw new BankingException(TransactionErrorCode.CURRENCY_MISMATCH);
+            }
+            BigDecimal amount = validAmount(command.amount(), from.currency());
+            preconditions.accept(from.currency());
+            ProductTerms fromTerms = productService.terms(from.productVersionId());
+            Charge charge = charge(fromTerms, ChargeEvent.TRANSFER_OUT, amount);
+            requireWithinLimits(from, fromTerms, amount);
+            requireMinimumBalanceKept(from, fromTerms, amount.add(charge.amount()));
+            requireBelowMaximum(to, productService.terms(to.productVersionId()), amount);
+            requireFunds(from, amount.add(charge.amount()));
+
+            String narration = narration(command.narration(), "Transfer");
+            List<PostingLine> lines = new ArrayList<>();
+            lines.add(PostingLine.toLedgerAccount(from.ledgerAccountId(), EntryDirection.DEBIT, amount,
+                    lineNarration(narration + " to " + to.accountNumber())));
+            lines.add(PostingLine.toLedgerAccount(to.ledgerAccountId(), EntryDirection.CREDIT, amount,
+                    lineNarration(narration + " from " + from.accountNumber())));
+            addCharge(lines, from, fromTerms, charge);
+            return post(new Movement(TransactionType.TRANSFER, from, to, from.branchId(), null, amount,
+                    charge.amount(), from.currency(), narration, null, idempotencyKey, TransactionChannel.MOBILE),
+                    lines, null);
+        });
+    }
+
+    /**
+     * What a customer has sent to others from the app today, in a currency (moves between their own accounts, given
+     * as {@code ownAccounts}, are left out).
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public BigDecimal mobileTransfersToday(UUID customerId, String currency, Collection<UUID> ownAccounts) {
+        return transactions.sumMobileTransfers(TenantContext.requireTenantId(), customerId, businessDates.today(),
+                currency, ownAccounts.isEmpty() ? List.of(new UUID(0, 0)) : ownAccounts);
     }
 
     /**

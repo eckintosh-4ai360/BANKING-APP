@@ -30,6 +30,21 @@ public interface FinancialTransactionRepository extends JpaRepository<FinancialT
                          @Param("businessDate") LocalDate businessDate, @Param("status") TransactionStatus status,
                          @Param("types") Collection<TransactionType> types);
 
+    /**
+     * What a customer sent to others from the app on a business date in a currency (their transfers, not reversed,
+     * except those into {@code ownAccounts}).
+     */
+    @Query("""
+            select coalesce(sum(t.amount), 0) from FinancialTransaction t
+            where t.tenantId = :tenantId and t.initiatedBy = :customerId and t.businessDate = :businessDate
+              and t.channel = com.company.banking.transaction.model.TransactionChannel.MOBILE
+              and t.transactionType = com.company.banking.transaction.model.TransactionType.TRANSFER
+              and t.status = com.company.banking.transaction.model.TransactionStatus.POSTED
+              and t.currency = :currency and t.creditAccountId not in :ownAccounts""")
+    BigDecimal sumMobileTransfers(@Param("tenantId") UUID tenantId, @Param("customerId") UUID customerId,
+                                  @Param("businessDate") LocalDate businessDate, @Param("currency") String currency,
+                                  @Param("ownAccounts") Collection<UUID> ownAccounts);
+
     @Query("""
             select t from FinancialTransaction t
             where t.tenantId = :tenantId and (t.debitAccountId = :accountId or t.creditAccountId = :accountId)
