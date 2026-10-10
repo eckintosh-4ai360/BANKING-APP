@@ -20,9 +20,13 @@ class AuthEndpoints {
   /// Staff (field officers and other institution staff).
   static const staff = AuthEndpoints(login: '/api/v1/auth/staff/login');
 
-  /// Customers. Login is the contract for customer digital banking (roadmap phase 6); refresh, MFA, logout and
-  /// password change reuse the shared auth endpoints, which identify the principal from the token itself.
-  static const customer = AuthEndpoints(login: '/api/v1/customer/auth/login');
+  /// Customers of the institution. A sign-in from a new installation is confirmed with a code texted to the
+  /// customer (the MFA step); refresh and logout are shared and identify the principal from the token itself.
+  static const customer = AuthEndpoints(
+    login: '/api/v1/customer/auth/login',
+    mfaVerify: '/api/v1/customer/auth/device/verify',
+    changePassword: '/api/v1/customer/auth/password',
+  );
 
   final String login;
   final String refresh;
@@ -96,6 +100,14 @@ class SessionController extends ChangeNotifier implements AccessTokenSource {
   /// Throws [ApiException] with the backend's message (invalid credentials, lockout, rate limit).
   Future<void> signIn(LoginRequest request, {String? institutionCode}) async {
     final tokens = await _client.post(_endpoints.login, TokenResponse.fromJson, body: request.toJson());
+    _institutionCode = institutionCode;
+    await _apply(tokens);
+  }
+
+  /// A credential exchange other than signing in that ends in a session, such as setting up mobile banking with a
+  /// texted code: posts [body] to the public [path] and applies the tokens it returns.
+  Future<void> exchange(String path, JsonMap body, {String? institutionCode}) async {
+    final tokens = await _client.post(path, TokenResponse.fromJson, body: body);
     _institutionCode = institutionCode;
     await _apply(tokens);
   }
