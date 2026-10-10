@@ -3,6 +3,9 @@ package com.company.banking.account.service;
 import com.company.banking.account.entity.Account;
 import com.company.banking.account.repository.AccountRepository;
 import com.company.banking.common.error.ResourceNotFoundException;
+import com.company.banking.account.repository.AccountHolderRepository;
+import com.company.banking.common.security.ActorType;
+import com.company.banking.common.security.AuthenticatedActor;
 import com.company.banking.common.security.BranchScope;
 import com.company.banking.common.security.CurrentActor;
 import com.company.banking.common.tenant.TenantContext;
@@ -20,6 +23,7 @@ import org.springframework.stereotype.Component;
 class AccountAccessGuard {
 
     private final AccountRepository accountRepository;
+    private final AccountHolderRepository holderRepository;
 
     Account loadForRead(UUID accountId) {
         return inScope(accountRepository.findByTenantIdAndId(TenantContext.requireTenantId(), accountId));
@@ -29,9 +33,22 @@ class AccountAccessGuard {
         return inScope(accountRepository.lockByTenantIdAndId(TenantContext.requireTenantId(), accountId));
     }
 
-    private static Account inScope(Optional<Account> account) {
-        BranchScope scope = CurrentActor.require().branchScope();
+    /**
+     * Staff reach the accounts of their branches; a customer reaches only accounts they currently hold.
+     */
+    private Account inScope(Optional<Account> account) {
+        AuthenticatedActor actor = CurrentActor.require();
+        if (actor.type() == ActorType.CUSTOMER) {
+            return account.filter(found -> isHolder(found, actor.id()))
+                    .orElseThrow(() -> new ResourceNotFoundException("Account"));
+        }
+        BranchScope scope = actor.branchScope();
         return account.filter(found -> scope.permits(found.getBranchId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Account"));
+    }
+
+    boolean isHolder(Account account, UUID customerId) {
+        return customerId != null && holderRepository.findCurrent(account.getTenantId(), account.getId()).stream()
+                .anyMatch(holder -> holder.getCustomerId().equals(customerId));
     }
 }
