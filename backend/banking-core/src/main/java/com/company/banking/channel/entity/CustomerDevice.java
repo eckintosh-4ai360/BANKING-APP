@@ -61,6 +61,16 @@ public class CustomerDevice {
     @Column(name = "revoke_reason", length = 50)
     private String revokeReason;
 
+    /** Where pushes for this installation go ({@code FCM} or {@code APNS}), when the app registered for them. */
+    @Column(name = "push_provider", length = 10)
+    private String pushProvider;
+
+    @Column(name = "push_token", length = 512)
+    private String pushToken;
+
+    @Column(name = "push_updated_at")
+    private Instant pushUpdatedAt;
+
     public CustomerDevice(UUID id, UUID tenantId, UUID customerId, String deviceKey, String name, String platform,
                           Instant now) {
         this.id = id;
@@ -82,10 +92,21 @@ public class CustomerDevice {
         this.lastSeenAt = now;
     }
 
+    /**
+     * @param provider null with a null token to stop pushes
+     */
+    public void registerPush(String provider, String token, Instant now) {
+        this.pushProvider = provider;
+        this.pushToken = token;
+        this.pushUpdatedAt = now;
+    }
+
     public void revoke(String reason, Instant now) {
         if (status == Status.REVOKED) {
             return;
         }
+        this.pushProvider = null;
+        this.pushToken = null;
         this.status = Status.REVOKED;
         this.revokedAt = now;
         this.revokeReason = reason;

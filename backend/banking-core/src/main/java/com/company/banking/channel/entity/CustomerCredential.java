@@ -68,6 +68,10 @@ public class CustomerCredential {
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
 
+    /** Text alerts for money in and out (security notices are always texted). */
+    @Column(name = "sms_alerts", nullable = false)
+    private boolean smsAlerts;
+
     @Column(name = "password_changed_at", nullable = false)
     private Instant passwordChangedAt;
 
@@ -92,6 +96,7 @@ public class CustomerCredential {
         this.passwordHash = passwordHash;
         this.pinHash = pinHash;
         this.status = Status.ACTIVE;
+        this.smsAlerts = true;
         this.passwordChangedAt = now;
         this.pinChangedAt = now;
         this.createdAt = now;
@@ -183,6 +188,11 @@ public class CustomerCredential {
             this.pinFailedAttempts = 0;
             this.updatedAt = now;
         }
+    }
+
+    public void chooseSmsAlerts(boolean enabled, Instant now) {
+        this.smsAlerts = enabled;
+        this.updatedAt = now;
     }
 
     public void disable(String reason, Instant now) {
