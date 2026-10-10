@@ -26,11 +26,18 @@ public class RefreshTokenCodec {
     private static final Pattern SECRET = Pattern.compile("^[A-Za-z0-9_-]{43}$");
     private static final int MAX_LENGTH = 128;
 
-    public String generate(UUID tenantId) {
+    /**
+     * {@code p.<secret>} (platform), {@code s.<tenant>.<secret>} (staff) or {@code c.<tenant>.<secret>} (customer).
+     */
+    public String generate(PrincipalType principalType, UUID tenantId) {
         byte[] secret = new byte[32];
         RANDOM.nextBytes(secret);
         String encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(secret);
-        return tenantId == null ? "p." + encoded : "s." + tenantId + "." + encoded;
+        return switch (principalType) {
+            case PLATFORM -> "p." + encoded;
+            case STAFF -> "s." + tenantId + "." + encoded;
+            case CUSTOMER -> "c." + tenantId + "." + encoded;
+        };
     }
 
     public Optional<ParsedRefreshToken> parse(String token) {
@@ -41,9 +48,11 @@ public class RefreshTokenCodec {
         if (parts.length == 2 && "p".equals(parts[0]) && SECRET.matcher(parts[1]).matches()) {
             return Optional.of(new ParsedRefreshToken(PrincipalType.PLATFORM, null));
         }
-        if (parts.length == 3 && "s".equals(parts[0]) && SECRET.matcher(parts[2]).matches()) {
+        if (parts.length == 3 && ("s".equals(parts[0]) || "c".equals(parts[0]))
+                && SECRET.matcher(parts[2]).matches()) {
             try {
-                return Optional.of(new ParsedRefreshToken(PrincipalType.STAFF, UUID.fromString(parts[1])));
+                return Optional.of(new ParsedRefreshToken("s".equals(parts[0]) ? PrincipalType.STAFF
+                        : PrincipalType.CUSTOMER, UUID.fromString(parts[1])));
             } catch (IllegalArgumentException ex) {
                 return Optional.empty();
             }

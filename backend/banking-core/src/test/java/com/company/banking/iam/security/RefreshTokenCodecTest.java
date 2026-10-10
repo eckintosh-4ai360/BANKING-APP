@@ -16,7 +16,7 @@ class RefreshTokenCodecTest {
     @Test
     void staffTokensCarryTheTenant() {
         UUID tenantId = UUID.randomUUID();
-        String token = codec.generate(tenantId);
+        String token = codec.generate(PrincipalType.STAFF, tenantId);
         assertThat(token).startsWith("s." + tenantId + ".");
         assertThat(codec.parse(token)).hasValue(new RefreshTokenCodec.ParsedRefreshToken(PrincipalType.STAFF,
                 tenantId));
@@ -24,23 +24,33 @@ class RefreshTokenCodecTest {
 
     @Test
     void platformTokensCarryNoTenant() {
-        String token = codec.generate(null);
+        String token = codec.generate(PrincipalType.PLATFORM, null);
         assertThat(token).startsWith("p.");
         assertThat(codec.parse(token)).hasValue(new RefreshTokenCodec.ParsedRefreshToken(PrincipalType.PLATFORM,
                 null));
     }
 
     @Test
+    void customerTokensCarryTheTenantUnderTheirOwnPrefix() {
+        UUID tenantId = UUID.randomUUID();
+        String token = codec.generate(PrincipalType.CUSTOMER, tenantId);
+        assertThat(token).startsWith("c." + tenantId + ".");
+        assertThat(codec.parse(token)).hasValue(new RefreshTokenCodec.ParsedRefreshToken(PrincipalType.CUSTOMER,
+                tenantId));
+    }
+
+    @Test
     void tokensAreRandomAndStoredOnlyAsHashes() {
-        String first = codec.generate(null);
-        String second = codec.generate(null);
+        String first = codec.generate(PrincipalType.PLATFORM, null);
+        String second = codec.generate(PrincipalType.PLATFORM, null);
         assertThat(first).isNotEqualTo(second);
         assertThat(codec.hash(first)).matches("^[0-9a-f]{64}$").isEqualTo(codec.hash(first))
                 .isNotEqualTo(codec.hash(second));
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"", "garbage", "p.", "p.short", "x.abc", "s.not-a-uuid.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    @ValueSource(strings = {"", "garbage", "p.", "p.short", "x.abc",
+            "c.not-a-uuid.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "s.not-a-uuid.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
             "s.00000000-0000-0000-0000-000000000000.too.many.parts"})
     void malformedTokensAreRejected(String token) {
         assertThat(codec.parse(token)).isEmpty();
