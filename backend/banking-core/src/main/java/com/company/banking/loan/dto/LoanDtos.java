@@ -338,6 +338,15 @@ public final class LoanDtos {
     }
 
     /**
+     * An installment falling due (for reminders).
+     *
+     * @param amount what is still owed on it
+     */
+    public record DueInstallment(UUID loanId, String loanNumber, UUID customerId, LocalDate dueDate,
+                                 BigDecimal amount, String currency) {
+    }
+
+    /**
      * @param settled the repayment paid the loan off and closed it
      */
     public record RepaymentReceipt(Repayment repayment, Loan loan, boolean settled) {

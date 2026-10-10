@@ -902,6 +902,25 @@ public class LoanService {
                 actor.id()));
     }
 
+    /**
+     * Installments of active loans still owing something that fall due on a date (for customer reminders).
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<LoanDtos.DueInstallment> installmentsDueOn(LocalDate date) {
+        UUID tenantId = TenantContext.requireTenantId();
+        List<LoanDtos.DueInstallment> due = new ArrayList<>();
+        for (LoanInstallment installment : installments.dueOn(tenantId, date)) {
+            BigDecimal owed = outstanding(installment);
+            if (owed.signum() == 0) {
+                continue;
+            }
+            Loan loan = loans.findByTenantIdAndId(tenantId, installment.getId().loanId()).orElseThrow();
+            due.add(new LoanDtos.DueInstallment(loan.getId(), loan.getLoanNumber(), loan.getCustomerId(),
+                    installment.getDueDate(), present(owed, loan.getCurrency()), loan.getCurrency()));
+        }
+        return due;
+    }
+
     @Transactional(readOnly = true)
     public LoanDtos.Payoff payoff(UUID loanId) {
         Loan loan = loadInScope(loanId);
