@@ -20,6 +20,40 @@ abstract final class Validators {
 
   static String? otp(String? value) => _otp.hasMatch(value?.trim() ?? '') ? null : 'Enter the 6-digit code';
 
+  static final _pin = RegExp(r'^\d{4,6}$');
+  static final _amount = RegExp(r'^(0|[1-9]\d{0,14})(\.\d{1,2})?$');
+
+  /// Backend policy for a transaction PIN: 4 to 6 digits, not one digit repeated, not a run up or down (1234, 9876).
+  static String? newPin(String? value) {
+    final text = value ?? '';
+    if (!_pin.hasMatch(text)) {
+      return 'Use 4 to 6 digits';
+    }
+    var repeated = true;
+    var ascending = true;
+    var descending = true;
+    for (var index = 1; index < text.length; index++) {
+      final step = text.codeUnitAt(index) - text.codeUnitAt(index - 1);
+      repeated &= step == 0;
+      ascending &= step == 1;
+      descending &= step == -1;
+    }
+    return repeated || ascending || descending ? 'Avoid one digit repeated or a run such as 1234' : null;
+  }
+
+  /// A PIN being entered to confirm something (the server checks it).
+  static String? pin(String? value) => _pin.hasMatch(value ?? '') ? null : 'Enter your 4 to 6 digit PIN';
+
+  /// An amount typed by the customer: digits with at most two decimals, above zero. It is sent as typed; the server
+  /// decides whether it can be paid.
+  static String? amount(String? value) {
+    final text = value?.trim() ?? '';
+    if (!_amount.hasMatch(text)) {
+      return 'Enter an amount such as 250.00';
+    }
+    return RegExp('[1-9]').hasMatch(text) ? null : 'Enter an amount above zero';
+  }
+
   /// Backend policy: 12 to 128 characters with at least 6 different characters (plus a blocklist it checks itself).
   static String? newPassword(String? value) {
     final text = value ?? '';

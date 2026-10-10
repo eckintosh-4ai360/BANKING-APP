@@ -218,5 +218,25 @@ void main() {
       expect(Validators.newPassword('correct horse battery'), isNull);
       expect(Validators.required('  '), 'Required');
     });
+
+    test('accept only PINs the backend accepts', () {
+      for (final good in ['2580', '13579', '902211']) {
+        expect(Validators.newPin(good), isNull, reason: good);
+      }
+      for (final bad in ['123', '1234567', '12a4', '1111', '1234', '4321', '987654', '012345']) {
+        expect(Validators.newPin(bad), isNotNull, reason: bad);
+      }
+      expect(Validators.pin('1234'), isNull);
+      expect(Validators.pin('12'), isNotNull);
+    });
+
+    test('accept amounts as typed, with at most two decimals and above zero', () {
+      for (final good in ['250', '250.5', '250.00', '0.01', '1000000']) {
+        expect(Validators.amount(good), isNull, reason: good);
+      }
+      for (final bad in ['', '0', '0.00', '-5', '1.234', '1,000', '01', 'abc', '1e3']) {
+        expect(Validators.amount(bad), isNotNull, reason: bad);
+      }
+    });
   });
 }
