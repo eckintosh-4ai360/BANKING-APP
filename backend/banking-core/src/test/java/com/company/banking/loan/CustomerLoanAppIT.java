@@ -38,6 +38,8 @@ class CustomerLoanAppIT extends LoanIntegrationTest {
         JsonNode loans = app.get(session, "/api/v1/customer/loans").expect(200).data();
         assertThat(loans).hasSize(1);
         assertThat(loans.at("/0/principalOutstanding").asString()).isEqualTo("1200.00");
+        assertThat(loans.get(0).has("provisionHeld") || loans.get(0).has("delinquencyBand")
+                || loans.get(0).has("nonAccrual")).as("the institution's own view stays internal").isFalse();
         JsonNode detail = app.get(session, "/api/v1/customer/loans/" + loanId).expect(200).data();
         assertThat(detail.get("schedule")).hasSize(6);
         app.get(session, "/api/v1/customer/loans/" + UUID.randomUUID()).expectError(404, "RESOURCE_NOT_FOUND");

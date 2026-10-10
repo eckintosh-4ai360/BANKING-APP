@@ -1,10 +1,9 @@
 package com.company.banking.channel.controller;
 
 import com.company.banking.channel.dto.BankingDtos;
+import com.company.banking.channel.dto.ProductDtos;
 import com.company.banking.channel.service.CustomerProductsService;
 import com.company.banking.common.api.ApiResponse;
-import com.company.banking.loan.dto.LoanDtos;
-import com.company.banking.susu.dto.SusuDtos;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -35,20 +34,20 @@ public class CustomerProductsController {
 
     @GetMapping("/loans")
     @Operation(summary = "My loans, newest first")
-    public ApiResponse<List<LoanDtos.Loan>> loans() {
+    public ApiResponse<List<ProductDtos.Loan>> loans() {
         return ApiResponse.ok(productsService.loans());
     }
 
     @GetMapping("/loans/{id}")
     @Operation(summary = "One of my loans with its schedule, repayments and what pays it off today")
-    public ApiResponse<LoanDtos.LoanDetail> loan(@PathVariable UUID id) {
+    public ApiResponse<ProductDtos.LoanDetail> loan(@PathVariable UUID id) {
         return ApiResponse.ok(productsService.loan(id));
     }
 
     @PostMapping("/loans/{id}/repayments")
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Repay from the loan's repayment account, with my PIN")
-    public ApiResponse<LoanDtos.RepaymentReceipt> repay(
+    public ApiResponse<ProductDtos.RepaymentReceipt> repay(
             @Parameter(description = "Unique per intended repayment; reuse it only to retry")
             @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @PathVariable UUID id,
@@ -58,13 +57,13 @@ public class CustomerProductsController {
 
     @GetMapping("/susu-plans")
     @Operation(summary = "My susu plans")
-    public ApiResponse<List<SusuDtos.Plan>> susuPlans() {
+    public ApiResponse<List<ProductDtos.SusuPlan>> susuPlans() {
         return ApiResponse.ok(productsService.susuPlans());
     }
 
     @GetMapping("/susu-plans/{id}")
     @Operation(summary = "One of my susu plans with its contributions")
-    public ApiResponse<SusuDtos.PlanDetail> susuPlan(@PathVariable UUID id) {
+    public ApiResponse<ProductDtos.SusuPlanDetail> susuPlan(@PathVariable UUID id) {
         return ApiResponse.ok(productsService.susuPlan(id));
     }
 }
