@@ -263,6 +263,17 @@ public class AccountService {
         return locked;
     }
 
+    /**
+     * The customers currently holding an account (for notifications).
+     */
+    @Transactional(readOnly = true)
+    public List<UUID> holderIdsOf(UUID accountId) {
+        return holderRepository.findCurrent(TenantContext.requireTenantId(), accountId).stream()
+                .map(AccountHolder::getCustomerId)
+                .distinct()
+                .toList();
+    }
+
     private static TransferDestination toDestination(Account account) {
         return new TransferDestination(account.getId(), account.getAccountNumber(), account.getTitle(),
                 account.getCurrency(), account.getStatus().name());

@@ -397,9 +397,15 @@ public class TransactionService {
                 .metadata("details", details)
                 .metadata("reason", pending.reason())
                 .build());
-        outbox.publish("FINANCIAL_TRANSACTION", transaction.getId(), "TRANSACTION_REVERSED", Map.of(
-                "reference", transaction.getReference(), "transactionType", transaction.getTransactionType().name(),
-                "reversalJournalEntryId", reversal.id().toString()));
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("reference", transaction.getReference());
+        event.put("transactionType", transaction.getTransactionType().name());
+        event.put("amount", currencies.present(transaction.getAmount(), transaction.getCurrency()));
+        event.put("currency", transaction.getCurrency());
+        event.put("debitAccountId", transaction.getDebitAccountId());
+        event.put("creditAccountId", transaction.getCreditAccountId());
+        event.put("reversalJournalEntryId", reversal.id().toString());
+        outbox.publish("FINANCIAL_TRANSACTION", transaction.getId(), "TRANSACTION_REVERSED", event);
         return transaction.getId();
     }
 
