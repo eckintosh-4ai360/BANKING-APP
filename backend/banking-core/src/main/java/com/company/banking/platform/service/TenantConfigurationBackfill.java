@@ -1,5 +1,6 @@
 package com.company.banking.platform.service;
 
+import com.company.banking.channel.service.ChannelSettingsService;
 import com.company.banking.common.security.CurrentActor;
 import com.company.banking.common.tenant.TenantContext;
 import com.company.banking.customer.service.IdentificationTypeService;
@@ -42,6 +43,7 @@ public class TenantConfigurationBackfill implements ApplicationRunner {
     private final BusinessCalendarService businessCalendarService;
     private final SusuPlanService susuPlanService;
     private final LoanSettingsService loanSettingsService;
+    private final ChannelSettingsService channelSettingsService;
     private final RoleService roleService;
 
     @Override
@@ -64,6 +66,7 @@ public class TenantConfigurationBackfill implements ApplicationRunner {
             businessCalendarService.provisionDefaults();
             susuPlanService.provisionDefaults();
             loanSettingsService.provisionDefaults();
+            channelSettingsService.provisionDefaults();
             accountingPeriodService.provisionCurrentPeriod();
             roleService.provisionMissingDefaultRoles();
             return null;

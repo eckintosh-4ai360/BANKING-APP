@@ -5,6 +5,7 @@ import com.company.banking.audit.service.AuditService;
 import com.company.banking.branch.dto.BranchResponse;
 import com.company.banking.branch.dto.NewHeadOffice;
 import com.company.banking.branch.service.BranchService;
+import com.company.banking.channel.service.ChannelSettingsService;
 import com.company.banking.common.api.PageRequests;
 import com.company.banking.common.api.PageResponse;
 import com.company.banking.common.error.BankingException;
@@ -72,6 +73,7 @@ public class PlatformTenantService {
     private final BusinessCalendarService businessCalendarService;
     private final SusuPlanService susuPlanService;
     private final LoanSettingsService loanSettingsService;
+    private final ChannelSettingsService channelSettingsService;
     private final AuditService auditService;
     private final TransactionTemplate transactionTemplate;
 
@@ -104,6 +106,7 @@ public class PlatformTenantService {
             businessCalendarService.provisionDefaults();
             susuPlanService.provisionDefaults();
             loanSettingsService.provisionDefaults();
+            channelSettingsService.provisionDefaults();
             accountingPeriodService.provisionCurrentPeriod();
             OnboardTenantRequest.Administrator admin = request.administrator();
             StaffCreatedResponse administrator = staffService.provisionAdministrator(new NewAdministrator(
