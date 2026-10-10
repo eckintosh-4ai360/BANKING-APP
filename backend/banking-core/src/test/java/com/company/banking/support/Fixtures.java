@@ -78,6 +78,16 @@ public final class Fixtures {
     }
 
     /**
+     * Licenses a feature for the institution (as the platform) and switches it on (as its administrator).
+     */
+    public void enableFeature(TenantHandle tenant, String featureCode) {
+        api.put("/api/v1/platform/tenants/" + tenant.id() + "/features/" + featureCode, platformToken(),
+                Map.of("licensed", true)).expect(200);
+        api.put("/api/v1/institution/features/" + featureCode, tenant.adminToken(), Map.of("enabled", true))
+                .expect(200);
+    }
+
+    /**
      * Creates a staff member with the given default roles and signs them in with a permanent password.
      */
     public StaffHandle createStaff(TenantHandle tenant, String username, UUID branchId, boolean allBranches,

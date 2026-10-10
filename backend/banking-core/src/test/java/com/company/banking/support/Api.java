@@ -50,6 +50,18 @@ public final class Api {
         return perform(withBody(builder, body));
     }
 
+    /**
+     * A request from an app installation: the {@code X-Device-Id} header identifies it (the customer app).
+     */
+    public Response fromDevice(String method, String path, String token, String deviceId, Object body) {
+        MockHttpServletRequestBuilder builder = authorize(MockMvcRequestBuilders.request(
+                org.springframework.http.HttpMethod.valueOf(method), path), token);
+        if (deviceId != null) {
+            builder.header("X-Device-Id", deviceId);
+        }
+        return perform(body == null && "GET".equals(method) ? builder : withBody(builder, body));
+    }
+
     public Response put(String path, String token, Object body) {
         return perform(withBody(authorize(MockMvcRequestBuilders.put(path), token), body));
     }
