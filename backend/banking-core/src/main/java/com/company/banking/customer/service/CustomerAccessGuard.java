@@ -22,7 +22,10 @@ import java.util.UUID;
 /**
  * Central access rules for customer data:
  * <ul>
- *   <li>customers outside the caller's branch scope do not exist for the caller (404);</li>
+ *   <li>customers outside the caller's branch scope do not exist for the caller (404); a customer signed in to the
+ *       app reaches only their own record;</li>
+ *   <li>a customer changes their own record only while signing up (still being onboarded), never once
+ *       established;</li>
  *   <li>changes need {@code customer.edit}, or {@code customer.create} while the customer is still being onboarded
  *       (field and loan officers capture data for new customers but can't alter established ones);</li>
  *   <li>nothing changes while KYC is under review, so the reviewer decides on a stable record;</li>
@@ -46,7 +49,12 @@ public class CustomerAccessGuard {
         AuthenticatedActor actor = CurrentActor.require();
         Customer customer = lockInScope(customerId);
         boolean onboarding = customer.getStatus() == CustomerStatus.PENDING;
-        if (actor.type() != ActorType.SYSTEM && !actor.hasPermission(Permissions.CUSTOMER_EDIT)
+        if (actor.type() == ActorType.CUSTOMER) {
+            if (!onboarding) {
+                throw new BankingException(CommonErrorCode.ACCESS_DENIED,
+                        "Your details can be changed at a branch once you are a customer.");
+            }
+        } else if (actor.type() != ActorType.SYSTEM && !actor.hasPermission(Permissions.CUSTOMER_EDIT)
                 && !(onboarding && actor.hasPermission(Permissions.CUSTOMER_CREATE))) {
             throw new BankingException(CommonErrorCode.ACCESS_DENIED,
                     "Changing an onboarded customer requires the customer.edit permission.");
@@ -75,8 +83,11 @@ public class CustomerAccessGuard {
     }
 
     private static Customer inScope(Optional<Customer> customer) {
-        BranchScope scope = CurrentActor.require().branchScope();
-        return customer.filter(found -> scope.permits(found.getHomeBranchId()))
+        AuthenticatedActor actor = CurrentActor.require();
+        BranchScope scope = actor.branchScope();
+        return customer.filter(found -> actor.type() == ActorType.CUSTOMER
+                        ? found.getId().equals(actor.id())
+                        : scope.permits(found.getHomeBranchId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Customer"));
     }
 }
