@@ -36,6 +36,7 @@ import com.company.banking.iam.security.mfa.MfaChallengeService;
 import com.company.banking.iam.security.mfa.Totp;
 import com.company.banking.iam.service.SessionService.NewSession;
 import com.company.banking.iam.service.SessionService.RotationResult;
+import com.company.banking.iam.spi.CustomerDirectory;
 import com.company.banking.iam.spi.StaffDirectory;
 import com.company.banking.iam.spi.StaffDirectory.StaffAuthProfile;
 import com.company.banking.tenant.dto.TenantSummary;
@@ -75,6 +76,7 @@ public class AuthenticationService {
     private final PlatformUserRepository platformUserRepository;
     private final RoleRepository roleRepository;
     private final StaffDirectory staffDirectory;
+    private final CustomerDirectory customerDirectory;
     private final SessionService sessionService;
     private final AccessTokenService accessTokenService;
     private final MfaChallengeService mfaChallengeService;
@@ -293,6 +295,23 @@ public class AuthenticationService {
                 sessionId, permissions, scope, mustChange, false);
     }
 
+    // ---------------------------------------------------------------------------------------------- Customer
+
+    /**
+     * A customer's session goes on while their institution is active, their digital banking credential is enabled
+     * and the device it was opened on is still trusted.
+     */
+    private Optional<AuthenticatedActor> customerActorForSession(AuthSession session) {
+        UUID tenantId = session.getTenantId();
+        boolean tenantActive = tenantService.findById(tenantId).map(TenantSummary::isActive).orElse(false);
+        if (!tenantActive || session.getDeviceId() == null) {
+            return Optional.empty();
+        }
+        return customerDirectory.findSignIn(session.getPrincipalId(), session.getDeviceId())
+                .map(signIn -> CustomerSessionService.actor(tenantId, signIn.customerId(), signIn.username(),
+                        session.getId()));
+    }
+
     // ---------------------------------------------------------------------------------------------- Platform
 
     private AuthOutcome attemptPlatformLogin(String username, String password) {
@@ -425,9 +444,11 @@ public class AuthenticationService {
             sessionService.revoke(session.getId(), SessionService.REASON_ACCOUNT_DISABLED);
             return new AuthOutcome.Failure(IamErrorCode.INVALID_REFRESH_TOKEN);
         }
-        Optional<AuthenticatedActor> actor = session.getPrincipalType() == PrincipalType.STAFF
-                ? staffActorForSession(session)
-                : platformActorForSession(session);
+        Optional<AuthenticatedActor> actor = switch (session.getPrincipalType()) {
+            case STAFF -> staffActorForSession(session);
+            case PLATFORM -> platformActorForSession(session);
+            case CUSTOMER -> customerActorForSession(session);
+        };
         if (actor.isEmpty()) {
             sessionService.revoke(session.getId(), SessionService.REASON_ACCOUNT_DISABLED);
             return new AuthOutcome.Failure(IamErrorCode.INVALID_REFRESH_TOKEN);
