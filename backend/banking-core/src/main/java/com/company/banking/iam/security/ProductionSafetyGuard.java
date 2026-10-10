@@ -26,7 +26,11 @@ public class ProductionSafetyGuard implements InitializingBean {
             "BVOxNmlXHutcXPq9VPpsu97iDGWPvjp6GCFAdnrmrwM=",
             "ACtTDQ1zY8e+jYoxRHFUOd4MVP7IIIBM+9shtcgHaDc=",
             "U+Y9NROLhm0a8O19L9xty26psAg5AIHHazP5V1frC7U=",
-            "MW2Iz7lJP0DfwbNND8KV6wgowJ3LR+SIgnZOSP0nT64=");
+            "MW2Iz7lJP0DfwbNND8KV6wgowJ3LR+SIgnZOSP0nT64=",
+            "CaK7tzupRMuSVBxZIhyjJAkD1vVAGI+pYirI/tUYpao=",
+            "haQ04s7+udwnxake6Nc79QO7FNxxmy7xbm5dtV3b40M=",
+            "9IPvmqQAx/fAzh2tR8VtiHFW9FdWOpxVNvNiZHw8YbI=",
+            "fwmN05hDAkTp4Oh8OA5KjLLVdTv6ezvEsGHgIV+DhvE=");
 
     private final BankingSecurityProperties properties;
     private final CryptoProperties cryptoProperties;
@@ -61,8 +65,14 @@ public class ProductionSafetyGuard implements InitializingBean {
         boolean publishedKey = PUBLISHED_KEYS.contains(cryptoProperties.blindIndexKey())
                 || cryptoProperties.dataKeys().values().stream().anyMatch(PUBLISHED_KEYS::contains)
                 || sealProperties.keys().values().stream().anyMatch(PUBLISHED_KEYS::contains);
+        publishedKey |= PUBLISHED_KEYS.contains(environment.getProperty("banking.channel.pin-pepper", ""))
+                || PUBLISHED_KEYS.contains(environment.getProperty("banking.channel.otp-pepper", ""));
         if (publishedKey) {
             fail("A published development encryption key is configured");
+        }
+        if ("stub".equals(environment.getProperty("banking.notification.sms.provider"))
+                || Boolean.parseBoolean(environment.getProperty("banking.notification.sms.stub-inbox-enabled"))) {
+            fail("The stub SMS gateway and its inbox are not allowed in deployed environments");
         }
         if ("stub".equals(environment.getProperty("banking.kyc.identity-verification-provider"))) {
             fail("The stub identity-verification provider is not allowed in deployed environments");

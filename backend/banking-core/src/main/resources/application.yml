@@ -106,6 +106,9 @@ banking:
       staff-idle-ttl: PT30M
       platform-absolute-ttl: PT4H
       platform-idle-ttl: PT15M
+      # Customers re-authenticate after 15 idle minutes and at most every 12 hours; the app signs out after 5 idle minutes.
+      customer-absolute-ttl: PT12H
+      customer-idle-ttl: PT15M
     lockout:
       max-failed-attempts: 5
       duration: PT30M
@@ -148,6 +151,21 @@ banking:
     backend: filesystem
     base-path: ${DOCUMENT_STORAGE_PATH:./data/documents}
     max-document-size: 10MB
+  notification:
+    sms:
+      # none | stub. Provider adapters (SMS aggregators, telcos) arrive with the integrations of Phase 7; until then
+      # anything that must text a code fails openly with SMS_UNAVAILABLE.
+      provider: ${SMS_PROVIDER:none}
+      stub-inbox-enabled: false
+  # Customer channel. The peppers come from the secret manager (base64, at least 32 bytes); the application refuses
+  # to start without them.
+  channel:
+    pin-pepper: ${CHANNEL_PIN_PEPPER:}
+    otp-pepper: ${CHANNEL_OTP_PEPPER:}
+    otp-ttl: PT5M
+    otp-max-attempts: 5
+    otp-max-per-hour: 5
+    pin-max-attempts: 5
   kyc:
     # none | stub. Real providers are added as adapters once a contract with an approved provider exists.
     identity-verification-provider: ${IDENTITY_VERIFICATION_PROVIDER:none}

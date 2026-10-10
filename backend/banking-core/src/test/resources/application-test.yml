@@ -19,6 +19,14 @@ banking:
       max-per-run: 100000
   kyc:
     identity-verification-provider: stub
+  notification:
+    sms:
+      provider: stub
+  channel:
+    pin-pepper: 9IPvmqQAx/fAzh2tR8VtiHFW9FdWOpxVNvNiZHw8YbI=
+    otp-pepper: fwmN05hDAkTp4Oh8OA5KjLLVdTv6ezvEsGHgIV+DhvE=
+    # Generous enough for whole test classes sharing a phone number; one test lowers nothing.
+    otp-max-per-hour: 1000
   storage:
     base-path: ${java.io.tmpdir}/banking-test-documents
   security:

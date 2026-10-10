@@ -22,6 +22,14 @@ banking:
         1: U+Y9NROLhm0a8O19L9xty26psAg5AIHHazP5V1frC7U=
   kyc:
     identity-verification-provider: stub
+  # Texts are kept in memory and readable at GET /api/v1/public/dev/sms?phoneNumber=... (local only).
+  notification:
+    sms:
+      provider: stub
+      stub-inbox-enabled: true
+  channel:
+    pin-pepper: CaK7tzupRMuSVBxZIhyjJAkD1vVAGI+pYirI/tUYpao=
+    otp-pepper: haQ04s7+udwnxake6Nc79QO7FNxxmy7xbm5dtV3b40M=
   security:
     jwt:
       # Ephemeral keys: tokens are invalidated on restart.
