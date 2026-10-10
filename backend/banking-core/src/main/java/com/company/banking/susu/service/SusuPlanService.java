@@ -10,6 +10,8 @@ import com.company.banking.common.error.CommonErrorCode;
 import com.company.banking.common.error.ResourceNotFoundException;
 import com.company.banking.common.id.References;
 import com.company.banking.common.id.UuidV7;
+import com.company.banking.common.security.ActorType;
+import com.company.banking.common.security.AuthenticatedActor;
 import com.company.banking.common.security.BranchScope;
 import com.company.banking.common.security.CurrentActor;
 import com.company.banking.common.tenant.TenantContext;
@@ -170,6 +172,22 @@ public class SusuPlanService {
         return detail;
     }
 
+    /**
+     * The signed-in customer's susu plans, newest first (customer channel).
+     */
+    @Transactional(readOnly = true)
+    public List<SusuDtos.Plan> customerPlans() {
+        AuthenticatedActor actor = CurrentActor.require();
+        if (actor.type() != ActorType.CUSTOMER) {
+            throw new BankingException(CommonErrorCode.ACCESS_DENIED);
+        }
+        UUID tenantId = TenantContext.requireTenantId();
+        return plans.findAllByTenantIdAndCustomerIdOrderByCreatedAtDesc(tenantId, actor.id()).stream()
+                .map(plan -> summary(plan, contributions.findAllByTenantIdAndPlanIdOrderBySequenceNo(tenantId,
+                        plan.getId())))
+                .toList();
+    }
+
     @Transactional(readOnly = true)
     public SusuDtos.PlanDetail get(UUID planId) {
         return detail(loadInScope(planId));
@@ -320,10 +338,15 @@ public class SusuPlanService {
                 .orElseThrow();
     }
 
+    /**
+     * Staff reach the plans of their branches; a customer reaches only their own.
+     */
     private SusuPlan loadInScope(UUID planId) {
-        BranchScope scope = CurrentActor.require().branchScope();
+        AuthenticatedActor actor = CurrentActor.require();
+        boolean customer = actor.type() == ActorType.CUSTOMER;
         return plans.findByTenantIdAndId(TenantContext.requireTenantId(), planId)
-                .filter(plan -> scope.permits(plan.getBranchId()))
+                .filter(plan -> customer ? plan.getCustomerId().equals(actor.id())
+                        : actor.branchScope().permits(plan.getBranchId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Susu plan"));
     }
 

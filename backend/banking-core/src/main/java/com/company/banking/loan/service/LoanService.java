@@ -15,6 +15,7 @@ import com.company.banking.common.id.References;
 import com.company.banking.common.id.UuidV7;
 import com.company.banking.common.idempotency.IdempotencyService;
 import com.company.banking.common.idempotency.IdempotencyService.Result;
+import com.company.banking.common.security.ActorType;
 import com.company.banking.common.security.AuthenticatedActor;
 import com.company.banking.common.security.BranchScope;
 import com.company.banking.common.security.CurrentActor;
@@ -888,6 +889,19 @@ public class LoanService {
         return detail(loadInScope(loanId));
     }
 
+    /**
+     * The signed-in customer's loans, newest first (customer channel).
+     */
+    @Transactional(readOnly = true)
+    public List<LoanDtos.Loan> customerLoans() {
+        AuthenticatedActor actor = CurrentActor.require();
+        if (actor.type() != ActorType.CUSTOMER) {
+            throw new BankingException(CommonErrorCode.ACCESS_DENIED);
+        }
+        return summaries(loans.findAllByTenantIdAndCustomerIdOrderByDisbursedAtDesc(TenantContext.requireTenantId(),
+                actor.id()));
+    }
+
     @Transactional(readOnly = true)
     public LoanDtos.Payoff payoff(UUID loanId) {
         Loan loan = loadInScope(loanId);
@@ -943,10 +957,15 @@ public class LoanService {
         return CurrentActor.currentActorId().orElseThrow(() -> new BankingException(CommonErrorCode.ACCESS_DENIED));
     }
 
+    /**
+     * Staff reach the loans of their branches; a customer reaches only their own.
+     */
     private Loan loadInScope(UUID loanId) {
-        BranchScope scope = CurrentActor.require().branchScope();
+        AuthenticatedActor actor = CurrentActor.require();
+        BranchScope scope = actor.branchScope();
+        boolean customer = actor.type() == ActorType.CUSTOMER;
         return loans.findByTenantIdAndId(TenantContext.requireTenantId(), loanId)
-                .filter(loan -> scope.permits(loan.getBranchId()))
+                .filter(loan -> customer ? loan.getCustomerId().equals(actor.id()) : scope.permits(loan.getBranchId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Loan"));
     }
 
