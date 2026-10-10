@@ -27,9 +27,15 @@ class WelcomeScreen extends ConsumerWidget {
             InstitutionHeader(name: branding.displayName, logoUrl: branding.logoUrl, subtitle: 'Mobile banking'),
             const SizedBox(height: Gaps.xl),
             if (notice != null) ...[NoticeBanner(notice), const SizedBox(height: Gaps.md)],
-            if (available)
-              PrimaryButton(label: 'Sign in', onPressed: () async => context.go(Routes.signIn))
-            else
+            if (available) ...[
+              PrimaryButton(label: 'Sign in', onPressed: () async => context.go(Routes.signIn)),
+              const SizedBox(height: Gaps.sm),
+              PrimaryButton(label: 'Set up mobile banking', outlined: true, onPressed: () async => context.go(Routes.activate)),
+              const SizedBox(height: Gaps.sm),
+              Text('Already a customer and new to the app? Set it up with your customer number.', style: Theme.of(context).textTheme.bodySmall),
+              const SizedBox(height: Gaps.lg),
+              TextButton(onPressed: () => context.go(Routes.signUp), child: const Text('Not a customer yet? Open an account')),
+            ] else
               NoticeBanner('Mobile banking is not yet available for ${branding.displayName}. Please visit a branch or contact us.'),
             const SizedBox(height: Gaps.lg),
             _SupportContacts(branding: branding),

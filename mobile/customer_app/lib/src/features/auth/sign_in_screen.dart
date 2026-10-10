@@ -44,22 +44,11 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           );
     } on ApiException catch (error) {
       if (mounted) {
-        setState(() => _error = _messageFor(error, branding));
+        setState(() => _error = error.message);
       }
     } finally {
       _password.clear();
     }
-  }
-
-  /// The customer sign-in service is part of customer digital banking; until the institution's server offers it,
-  /// say so plainly instead of showing a misleading "wrong password".
-  String _messageFor(ApiException error, InstitutionBranding branding) {
-    final unavailable = error.statusCode == 404 || error.code == 'UNAUTHENTICATED' || error.code == 'NOT_FOUND';
-    if (!unavailable) {
-      return error.message;
-    }
-    final contact = branding.supportPhone ?? branding.supportEmail;
-    return 'Mobile banking sign-in is not available yet.${contact == null ? '' : ' Please contact $contact.'}';
   }
 
   @override
@@ -96,6 +85,12 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                 ),
                 const SizedBox(height: Gaps.lg),
                 PrimaryButton(label: 'Sign in', onPressed: () => _submit(branding)),
+                TextButton(onPressed: () => context.go(Routes.forgotPassword), child: const Text('Forgot your password?')),
+                const SizedBox(height: Gaps.sm),
+                Text(
+                  'Signing in on a new phone? We will text a code to the number you sign in with.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ],
             ),
           ),

@@ -56,7 +56,7 @@ class _VerifyScreenState extends ConsumerState<VerifyScreen> {
         child: ListView(
           padding: const EdgeInsets.all(Gaps.lg),
           children: [
-            const Text('Enter the 6-digit verification code.'),
+            const Text('This is a new phone for your mobile banking. Enter the 6-digit code we texted to the number you sign in with.'),
             const SizedBox(height: Gaps.lg),
             OtpField(controller: _code, enabled: !_busy, errorText: _error, onCompleted: (_) => _verify()),
             const SizedBox(height: Gaps.lg),
